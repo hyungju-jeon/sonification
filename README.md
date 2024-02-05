@@ -12,7 +12,7 @@ Sonification project for METAMERSION
    ```
 3. Install Conda environment from `enviroment.yml`
    ```
-   git clone --recurse-submodules --remote-submodules https://github.com/hyungju-jeon/sonification
+   conda env create -f environment.yml
    ```
 4. `pip install` package
    ```

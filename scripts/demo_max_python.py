@@ -266,23 +266,24 @@ async def init_main():
     )
     transport, protocol = await server.create_serve_endpoint()
     # ---------------------------------------------------------- #
-    dt = 5e-3
+    dt = 5e-3  # 5ms for dynamic system update
     cycle_info_1 = {
         "x0": torch.tensor([0.5, 0]),
         "d": 1,
-        "w": 2 * np.pi * 5,
+        "w": 2 * np.pi * 5,  # 5 Hz
         "Q": torch.tensor([[1e-10, 0.0], [0.0, 1e-10]]),
         "dt": dt,
     }
     cycle_info_2 = {
         "x0": torch.tensor([1, 1]),
         "d": 1,
-        "w": 2 * np.pi * 6,
+        "w": 2 * np.pi * 10,  # 10 Hz
         "Q": torch.tensor([[1e-10, 0.0], [0.0, 1e-10]]),
         "dt": dt,
     }
 
-    C, b = simulate_neuron_parameters(cycle_info_1, 50, 10 * dt)
+    target_firing_rate = 10
+    C, b = simulate_neuron_parameters(cycle_info_1, 50, target_firing_rate * dt)
 
     await asyncio.gather(
         trajectory_sending_loop(ms_to_ns(0.2)),

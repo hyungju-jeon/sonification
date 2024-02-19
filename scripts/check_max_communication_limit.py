@@ -1,9 +1,5 @@
 # %%
-from ctypes.wintypes import PHANDLE
-import queue
 import time
-import random
-import torch
 import asyncio
 
 from pythonosc.dispatcher import Dispatcher
@@ -91,7 +87,7 @@ async def python_to_max_handler(interval_ns, outputs):
 
 
 async def init_main():
-    dt = 0.2
+    dt = 0.1
     # ---------------------------------------------------------- #
     dispatcher = Dispatcher()
     dispatcher.map("/INPUT", max_to_python_osc_handler)

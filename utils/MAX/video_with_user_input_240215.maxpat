@@ -40,6 +40,81 @@
 		"assistshowspatchername" : 0,
 		"boxes" : [ 			{
 				"box" : 				{
+					"id" : "obj-106",
+					"interval" : 28,
+					"logamp" : 0,
+					"logfreq" : 1,
+					"maxclass" : "spectroscope~",
+					"monochrome" : 0,
+					"numinlets" : 2,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 1423.0, 1079.0, 300.0, 100.0 ]
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-107",
+					"maxclass" : "mc.ezdac~",
+					"numinlets" : 1,
+					"numoutlets" : 0,
+					"patching_rect" : [ 1146.0, 951.0, 45.0, 45.0 ]
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"calccount" : 128,
+					"displaychan" : 2,
+					"id" : "obj-108",
+					"maxclass" : "scope~",
+					"numinlets" : 2,
+					"numoutlets" : 0,
+					"patching_rect" : [ 1307.0, 840.0, 194.0, 145.0 ]
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-109",
+					"lastchannelcount" : 2,
+					"maxclass" : "mc.live.gain~",
+					"numinlets" : 1,
+					"numoutlets" : 4,
+					"orientation" : 1,
+					"outlettype" : [ "multichannelsignal", "", "float", "list" ],
+					"parameter_enable" : 1,
+					"patching_rect" : [ 896.0, 817.0, 133.0, 47.0 ],
+					"saved_attribute_attributes" : 					{
+						"valueof" : 						{
+							"parameter_longname" : "mc.live.gain~[2]",
+							"parameter_mmax" : 6.0,
+							"parameter_mmin" : -70.0,
+							"parameter_shortname" : "mc.live.gain~",
+							"parameter_type" : 0,
+							"parameter_unitstyle" : 4
+						}
+
+					}
+,
+					"varname" : "mc.live.gain~[2]"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-110",
+					"maxclass" : "meter~",
+					"numinlets" : 1,
+					"numoutlets" : 1,
+					"outlettype" : [ "float" ],
+					"patching_rect" : [ 916.0, 901.0, 151.0, 63.0 ]
+				}
+
+			}
+, 			{
+				"box" : 				{
 					"format" : 6,
 					"id" : "obj-104",
 					"maxclass" : "flonum",
@@ -61,33 +136,6 @@
 					"outlettype" : [ "", "bang" ],
 					"parameter_enable" : 0,
 					"patching_rect" : [ 351.0, 669.0, 50.0, 22.0 ]
-				}
-
-			}
-, 			{
-				"box" : 				{
-					"id" : "obj-96",
-					"lastchannelcount" : 2,
-					"maxclass" : "mc.live.gain~",
-					"numinlets" : 1,
-					"numoutlets" : 4,
-					"orientation" : 1,
-					"outlettype" : [ "multichannelsignal", "", "float", "list" ],
-					"parameter_enable" : 1,
-					"patching_rect" : [ 626.0, 695.0, 133.0, 47.0 ],
-					"saved_attribute_attributes" : 					{
-						"valueof" : 						{
-							"parameter_longname" : "mc.live.gain~[1]",
-							"parameter_mmax" : 6.0,
-							"parameter_mmin" : -70.0,
-							"parameter_shortname" : "mc.live.gain~",
-							"parameter_type" : 0,
-							"parameter_unitstyle" : 4
-						}
-
-					}
-,
-					"varname" : "mc.live.gain~[1]"
 				}
 
 			}
@@ -439,7 +487,7 @@
 			}
 , 			{
 				"box" : 				{
-					"addpoints" : [ 0.0, 0.0, 0, 1156.028585231050556, 0.48, 0, 1730.496670337433443, 0.626666666666667, 0, 2283.688159699135667, 0.96, 0, 3191.489361702127553, 1.0, 0, 4000.0, 0.0, 0 ],
+					"addpoints" : [ 0.0, 0.0, 0, 446.808510638297889, 0.84, 0, 1404.255319148936223, 0.2, 0, 1730.496670337433443, 0.626666666666667, 0, 2276.595744680851112, 0.253333333333333, 0, 3191.489361702127553, 1.0, 0, 4000.0, 0.0, 0 ],
 					"classic_curve" : 1,
 					"domain" : 4000.0,
 					"id" : "obj-66",
@@ -1336,6 +1384,38 @@
 			}
 , 			{
 				"patchline" : 				{
+					"destination" : [ "obj-106", 0 ],
+					"order" : 0,
+					"source" : [ "obj-109", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
+					"destination" : [ "obj-107", 0 ],
+					"order" : 2,
+					"source" : [ "obj-109", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
+					"destination" : [ "obj-108", 0 ],
+					"order" : 1,
+					"source" : [ "obj-109", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
+					"destination" : [ "obj-110", 0 ],
+					"order" : 3,
+					"source" : [ "obj-109", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
 					"destination" : [ "obj-30", 0 ],
 					"source" : [ "obj-12", 0 ]
 				}
@@ -1938,7 +2018,7 @@
 			}
 , 			{
 				"patchline" : 				{
-					"destination" : [ "obj-96", 0 ],
+					"destination" : [ "obj-109", 0 ],
 					"source" : [ "obj-97", 0 ]
 				}
 
@@ -1952,11 +2032,11 @@
 			}
  ],
 		"parameters" : 		{
+			"obj-109" : [ "mc.live.gain~[2]", "mc.live.gain~", 0 ],
 			"obj-11" : [ "live.button[1]", "live.button", 0 ],
 			"obj-2" : [ "live.toggle[2]", "live.toggle", 0 ],
 			"obj-29" : [ "live.toggle", "live.toggle", 0 ],
 			"obj-71" : [ "mc.live.gain~", "mc.live.gain~", 0 ],
-			"obj-96" : [ "mc.live.gain~[1]", "mc.live.gain~", 0 ],
 			"parameterbanks" : 			{
 				"0" : 				{
 					"index" : 0,

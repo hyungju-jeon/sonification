@@ -154,8 +154,6 @@ class RippleAnimationWindow(pg.Qt.QtWidgets.QMainWindow):
         if self.frame < 10000:
             self.data = spike[0]  # Update binary vector
             spike[0] = np.zeros((50, 1))
-            # self.data = np.zeros(N)
-            # self.data[0] = 1
             for i, val in enumerate(self.data):
                 if val == 1:
                     self.animate_point(i)

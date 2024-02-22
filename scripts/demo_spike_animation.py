@@ -226,7 +226,6 @@ class RippleAnimationWindow(pg.Qt.QtWidgets.QMainWindow):
             current_pen = item.opts.get("pen")
             current_alpha = current_pen.color().getRgb()[-1]
             current_width = current_pen.width()
-            # item.setPen(pg.mkPen(color=(0, 255, 65, (1 - (radius / R) * 0.9) * 255)))
             item.setPen(
                 pg.mkPen(
                     width=current_width,

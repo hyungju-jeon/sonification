@@ -18,6 +18,8 @@ R = 50  # Desired radius for the ripple effect
 
 spike = [np.zeros((50, 1))]
 SERVER_IP = "127.0.0.1"
+pg.setConfigOptions(useOpenGL=True)
+# pg.setConfigOption("antialias", True)
 
 
 def max_to_python_osc_handler(address, *args):
@@ -87,7 +89,7 @@ class RippleAnimation(object):
     def animation(self):
         timer = QTimer()
         timer.timeout.connect(self.update)
-        timer.start(0)
+        timer.start(10)
         self.start()
 
     def update(self):
@@ -124,25 +126,27 @@ class RippleAnimation(object):
         pos = [self.centroid_positions[index]]
 
         # Add the ripple background glow element
-        ripple_bg = pg.ScatterPlotItem()
+        ripple_bg = pg.ScatterPlotItem(_USE_QRECT=False)
         ripple_bg.setData(
             pos=pos,
             size=10,
             symbol="o",
-            pen=pg.mkPen(width=8, color=(0, 255, 65, 100)),
+            pen=pg.mkPen(width=8, color=(0, 255, 65, 200)),
             brush=(255, 0, 0, 0),
+            useCache=False,
         )
-        self.plot_widget.addItem(ripple_bg)
-        QTimer.singleShot(0, lambda: self.expand_circle((ripple_bg, 0)))
+        # self.plot_widget.addItem(ripple_bg)
+        # QTimer.singleShot(0, lambda: self.expand_circle((ripple_bg, 0)))
 
         # # Add the ripple element
-        ripple = pg.ScatterPlotItem()
+        ripple = pg.ScatterPlotItem(_USE_QRECT=False)
         ripple.setData(
             pos=pos,
             size=8,
             symbol="o",
-            pen=pg.mkPen(width=3, color=(125, 255, 150, 255)),
+            pen=pg.mkPen(width=15, color=(125, 255, 150, 255)),
             brush=(255, 0, 0, 0),
+            useCache=False,
         )
         self.plot_widget.addItem(ripple)
         QTimer.singleShot(10, lambda: self.expand_circle((ripple, 0)))
@@ -179,10 +183,10 @@ class RippleAnimation(object):
         current_color = list(current_pen.color().getRgb())
         radius = circle.opts.get("size")
 
-        if iter < 20 and current_color[-1] > 10 and radius < 40:
+        if iter < 30 and current_color[-1] > 10 and radius < 40:
             circle.setSize(radius + 2)
-            current_width = current_pen.width()
-            current_color[-1] *= 0.85
+            current_width = current_pen.width() - 1
+            current_color[-1] *= 0.9
             circle.setPen(
                 pg.mkPen(
                     width=current_width,
@@ -589,6 +593,6 @@ if __name__ == "__main__":
     asyncio_thread = threading.Thread(target=asyncio_run)
     asyncio_thread.start()
 
-    # anim = RippleAnimation()
-    anim = DiscAnimation()
+    anim = RippleAnimation()
+    # anim = DiscAnimation()
     anim.animation()

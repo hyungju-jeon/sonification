@@ -129,11 +129,10 @@ async def spike_sending_loop(interval_ns, trajectory, spikes, verbose=False):
         None
     """
     global C, b
-    C[:, :10] = np.repeat(C[:, 0], 10, axis=0)
-    C[:, 10:20] = np.repeat(C[:, 1], 10, axis=0)
-    C[:, 20:30] = np.repeat(C[:, 2], 10, axis=0)
-    C[:, 30:40] = np.repeat(C[:, 3], 10, axis=0)
-    C[:, 40:] = np.repeat(C[:, 4], 10, axis=0)
+    # Imposing explicit structure for testing...
+    for i in range(10):
+        C[:, 5 * int(i) : 5 * int(i) + 5] = C[:, i][:, None]
+
     while True:
         start_t = time.perf_counter_ns()
         py_to_max_OscSender.send_message(

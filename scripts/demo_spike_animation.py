@@ -75,6 +75,7 @@ class RippleAnimation(object):
             (np.random.uniform(-10, 10), np.random.uniform(-10, 10)) for _ in range(N)
         ]
         self.indicators, self.indicator_traces = self.draw_centroids()
+        self.velocity = np.zeros((N, 2))
 
         # Add function that will be called when the timer times out
         self.frame = 0
@@ -94,7 +95,7 @@ class RippleAnimation(object):
         Updates the animation by removing marked circles, updating the binary vector,
         animating points, moving centroids, and stopping the timer when the animation is complete.
         """
-        # stime = time.perf_counter_ns()
+        stime = time.perf_counter_ns()
         self.data = spike[0]
         spike[0] = np.zeros((50, 1))
 
@@ -105,12 +106,13 @@ class RippleAnimation(object):
         self.move_centroids()
         self.update_centroid_indicator()
 
+        print(f"FPS : {(time.perf_counter_ns() - stime) / 1e6}")
+
         # Update the binary vector and generate new spikes
         for i, val in enumerate(self.data):
             if val == 1:
                 self.trigger_spike(i)
         self.frame += 1
-        # print(f"FPS : {1 / (time.perf_counter_ns() - stime) * 1e9}")
 
     def trigger_spike(self, index):
         """
@@ -133,7 +135,7 @@ class RippleAnimation(object):
         self.plot_widget.addItem(ripple_bg)
         QTimer.singleShot(0, lambda: self.expand_circle((ripple_bg, 0)))
 
-        # Add the ripple element
+        # # Add the ripple element
         ripple = pg.ScatterPlotItem()
         ripple.setData(
             pos=pos,
@@ -143,7 +145,7 @@ class RippleAnimation(object):
             brush=(255, 0, 0, 0),
         )
         self.plot_widget.addItem(ripple)
-        QTimer.singleShot(0, lambda: self.expand_circle((ripple, 0)))
+        QTimer.singleShot(10, lambda: self.expand_circle((ripple, 0)))
 
         # Add the zapping effect element
         zap_effect = pg.ScatterPlotItem()
@@ -187,7 +189,7 @@ class RippleAnimation(object):
                     color=current_color,
                 )
             )
-            QTimer.singleShot(1, lambda: self.expand_circle((circle, iter + 1)))
+            QTimer.singleShot(10, lambda: self.expand_circle((circle, iter + 1)))
         else:
             circle.setPointsVisible(False)
 
@@ -234,17 +236,28 @@ class RippleAnimation(object):
         Updates the centroid indicator positions in the animation.
         """
         stime = time.perf_counter_ns()
-        pos = self.indicators.data
+        x, y = self.indicators.getData()
+        # get first two columns of pos
+        pos = np.column_stack((x, y))
+        # if new position is out of bounds, reverse the velocity
+        for i, center in enumerate(pos):
+            self.velocity[i] = np.clip(self.velocity[i], -1, 1)
+            if center[0] > 10 or center[0] < -10:
+                self.velocity[i, 0] *= -1
+            if center[1] > 10 or center[1] < -10:
+                self.velocity[i, 1] *= -1
+        new_pos = pos + self.velocity * 0.1
         for i, trace in enumerate(self.indicator_traces):
             trace.setData(
-                x=[pos[i][0], self.centroid_positions[i][0]],
-                y=[pos[i][1], self.centroid_positions[i][1]],
+                x=[pos[i][0], new_pos[i][0]],
+                y=[pos[i][1], new_pos[i][1]],
             )
 
-        self.indicators.setData(pos=self.centroid_positions, skipFiniteCheck=True)
-        # print(f"FPS : {1 / (time.perf_counter_ns() - stime) * 1e9}")
+        self.indicators.setData(pos=new_pos, skipFiniteCheck=True)
+        self.centroid_positions = new_pos
+        print(f"msec : {(time.perf_counter_ns() - stime) /1e9}")
 
-    def move_centroids(self):
+    def move_centroids_jump(self):
         """
         Moves the centroids based on the activated points.
         """
@@ -281,6 +294,37 @@ class RippleAnimation(object):
                 if distance < 1:
                     repulsion_force -= direction / (distance**2)
             self.centroid_positions[i] += 0.01 * repulsion_force
+
+    def move_centroids(self):
+        """
+        Moves the centroids based on the activated points.
+        """
+        activated_positions = [
+            (i, self.centroid_positions[i])
+            for i, val in enumerate(self.data)
+            if val == 1
+        ]
+        for i, center in activated_positions:
+            repulsion_force = np.array([0.0, 0.0])
+            for j, other_center in activated_positions:
+                if i == j:
+                    continue
+                direction = np.array(other_center) - np.array(center)
+                distance = np.linalg.norm(direction)
+                if distance < 5:
+                    repulsion_force += direction / (distance**2)
+            self.velocity[i] += 0.1 * repulsion_force
+
+        for i, center in enumerate(self.centroid_positions):
+            repulsion_force = np.array([0.0, 0.0])
+            for j, other_center in enumerate(self.centroid_positions):
+                if i == j:
+                    continue
+                direction = np.array(other_center) - np.array(center)
+                distance = np.linalg.norm(direction)
+                if distance < 3:
+                    repulsion_force -= direction / (distance**2)
+            self.velocity[i] += 0.1 * repulsion_force
 
 
 class DiscAnimation(object):

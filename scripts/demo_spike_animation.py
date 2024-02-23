@@ -367,7 +367,7 @@ class DiscAnimation(object):
         self.centroid_positions = [
             (np.random.uniform(-10, 10), np.random.uniform(-10, 10)) for _ in range(N)
         ]
-        self.indicators, self.indicator_traces = self.draw_centroids()
+        self.draw_centroids()
 
         # Add function that will be called when the timer times out
         self.frame = 0
@@ -387,6 +387,7 @@ class DiscAnimation(object):
         Updates the animation by removing marked circles, updating the binary vector,
         animating points, moving centroids, and stopping the timer when the animation is complete.
         """
+        print(len(self.plot_widget.items()))
         stime = time.perf_counter_ns()
         self.data = spike[0]
         spike[0] = np.zeros((50, 1))
@@ -395,7 +396,7 @@ class DiscAnimation(object):
 
         # Update centroid location and replot centroid indicator
         self.move_centroids()
-        self.update_centroid_indicator()
+        # self.update_centroid_indicator()
 
         # Update the binary vector and generate new spikes
         for i, val in enumerate(self.data):
@@ -411,40 +412,25 @@ class DiscAnimation(object):
         Args:
             index (int): The index of the spike to trigger.
         """
+        curr_size = self.indicators[index].opts.get("size")
 
-        pos = [self.centroid_positions[index]]
-
-        # Add the ripple background glow element
-        ripple_bg = pg.ScatterPlotItem()
-        ripple_bg.setData(
-            pos=pos,
-            size=10,
+        self.indicators[index].setData(
+            size=curr_size + 20.0,
+            pos=[self.centroid_positions[index]],
             symbol="o",
-            pen=pg.mkPen(width=8, color=(0, 255, 65, 100)),
-            brush=(255, 0, 0, 0),
+            antialias=False,
+            pen=pg.mkPen(width=0, color=(0, 255, 65, 100)),
+            brush=(0, 255, 65, 255),
         )
-        self.plot_widget.addItem(ripple_bg)
-        QTimer.singleShot(0, lambda: self.expand_circle((ripple_bg, 0)))
-
-        # Add the ripple element
-        ripple = pg.ScatterPlotItem()
-        ripple.setData(
-            pos=pos,
-            size=8,
-            symbol="o",
-            pen=pg.mkPen(width=3, color=(125, 255, 150, 255)),
-            brush=(255, 0, 0, 0),
-        )
-        self.plot_widget.addItem(ripple)
-        QTimer.singleShot(0, lambda: self.expand_circle((ripple, 0)))
+        QTimer.singleShot(0, lambda: self.shrink_circle(index))
 
         # Add the zapping effect element
         zap_effect = pg.ScatterPlotItem()
         zap_effect.setData(
-            pos=pos,
-            size=8,
+            pos=[self.centroid_positions[index]],
+            size=15,
             symbol="o",
-            brush=(255, 230, 230, 255),
+            brush=(205, 230, 230, 180),
         )
         self.plot_widget.addItem(zap_effect)
         QTimer.singleShot(0, lambda: self.create_zap_effect(zap_effect))
@@ -457,32 +443,6 @@ class DiscAnimation(object):
             circle (ScatterPlotItem): The circle to create the zap effect for.
         """
         QTimer.singleShot(30, lambda: circle.setPointsVisible(False))
-
-    def expand_circle(self, circle_iter_tuple):
-        """
-        Expands a circle in the animation by gradually increasing its size.
-
-        Args:
-            circle (tuple): A tuple containing the circle item and its current radius.
-        """
-        circle, iter = circle_iter_tuple
-        current_pen = circle.opts.get("pen")
-        current_color = list(current_pen.color().getRgb())
-        radius = circle.opts.get("size")
-
-        if iter < 20 and current_color[-1] > 10 and radius < 40:
-            circle.setSize(radius + 2)
-            current_width = current_pen.width()
-            current_color[-1] *= 0.85
-            circle.setPen(
-                pg.mkPen(
-                    width=current_width,
-                    color=current_color,
-                )
-            )
-            QTimer.singleShot(1, lambda: self.expand_circle((circle, iter + 1)))
-        else:
-            circle.setPointsVisible(False)
 
     def remove_marked_circles(self):
         """
@@ -498,6 +458,25 @@ class DiscAnimation(object):
                 if not all(item.data["visible"]):
                     self.plot_widget.removeItem(item)
 
+    def shrink_circle(self, index):
+        """
+        Expands a circle in the animation by gradually increasing its size.
+
+        Args:
+            circle (tuple): A tuple containing the circle item and its current radius.
+        """
+        curr_size = self.indicators[index].opts.get("size")
+        if curr_size * 0.95 > 0.5:
+            self.indicators[index].setData(
+                size=curr_size * 0.95 - 0.5,
+                pos=[self.centroid_positions[index]],
+                symbol="o",
+                antialias=False,
+                pen=pg.mkPen(width=0, color=(0, 255, 65, 255)),
+                brush=(0, 255, 65, 255),
+            )
+            QTimer.singleShot(30, lambda: self.shrink_circle(index))
+
     def draw_centroids(self):
         """
         Draws the centroid indicators in the animation.
@@ -505,33 +484,31 @@ class DiscAnimation(object):
         Returns:
             list: The centroid indicator items in the animation.
         """
-        indicator = pg.ScatterPlotItem()
-        indicator.setData(
-            pos=self.centroid_positions,
-            size=3,
-            symbol="o",
-            brush=(200, 200, 200, 200),
-        )
-        self.plot_widget.addItem(indicator)
-
-        indicator_traces = []
+        indicators = []
         for i in range(N):
-            indicator_trace = pg.PlotCurveItem()
-            indicator_trace.setData(x=[0, 0], y=[0, 0])
-            indicator_traces.append(indicator_trace)
-            self.plot_widget.addItem(indicator_trace)
-        return indicator, indicator_traces
+            indicator = pg.ScatterPlotItem()
+            print(self.centroid_positions[i])
+            indicator.setData(
+                pos=[self.centroid_positions[i]],
+                size=5,
+                symbol="o",
+                brush=(0, 255, 65, 255),
+                antialias=False,
+            )
+            self.plot_widget.addItem(indicator)
+            indicators.append(indicator)
+        self.indicators = indicators
 
     def update_centroid_indicator(self):
         """
         Updates the centroid indicator positions in the animation.
         """
         pos = self.indicators.data
-        for i, trace in enumerate(self.indicator_traces):
-            trace.setData(
-                x=[pos[i][0], self.centroid_positions[i][0]],
-                y=[pos[i][1], self.centroid_positions[i][1]],
-            )
+        # for i, trace in enumerate(self.indicator_traces):
+        #     trace.setData(
+        #         x=[pos[i][0], self.centroid_positions[i][0]],
+        #         y=[pos[i][1], self.centroid_positions[i][1]],
+        #     )
 
         self.indicators.setData(pos=self.centroid_positions, skipFiniteCheck=True)
         # pass
@@ -612,5 +589,6 @@ if __name__ == "__main__":
     asyncio_thread = threading.Thread(target=asyncio_run)
     asyncio_thread.start()
 
-    anim = RippleAnimation()
+    # anim = RippleAnimation()
+    anim = DiscAnimation()
     anim.animation()

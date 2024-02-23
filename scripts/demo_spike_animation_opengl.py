@@ -43,27 +43,24 @@ class Visualizer(object):
         self.plot_widget.setGeometry(0, 110, 1024, 768)
         self.plot_widget.show()
 
+        gx = gl.GLGridItem()
+        gx.rotate(90, 0, 1, 0)
+        gx.translate(-10, 0, 0)
+        self.plot_widget.addItem(gx)
+        gy = gl.GLGridItem()
+        gy.rotate(90, 1, 0, 0)
+        gy.translate(0, -10, 0)
+        self.plot_widget.addItem(gy)
+        gz = gl.GLGridItem()
+        gz.translate(0, 0, -10)
+        self.plot_widget.addItem(gz)
+
         self.data = np.zeros(50)
         self.centroid_positions = [
             (np.random.uniform(-10, 10), np.random.uniform(-10, 10)) for _ in range(N)
         ]
         self.centroids = dict()
         self.traces = dict()
-
-        # self.indicators, self.indicator_traces = self.draw_centroids()
-
-        # for i, line in enumerate(self.y):
-        #     y = np.array([line] * self.points)
-        #     d = np.sqrt(self.x**2 + y**2)
-        #     sine = 10 * np.sin(d + self.phase)
-        #     pts = np.vstack([self.x, y, sine]).transpose()
-        #     self.traces[i] = gl.GLLinePlotItem(
-        #         pos=pts,
-        #         color=pg.glColor((i, self.lines * 1.3)),
-        #         width=(i + 1) / 10,
-        #         antialias=True,
-        #     )
-        #     self.w.addItem(self.traces[i])
 
     def start(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
@@ -118,8 +115,8 @@ class Visualizer(object):
         zap_effect = gl.GLScatterPlotItem()
         zap_effect.setData(
             pos=pos,
-            size=10,
-            color=(1, 1, 1, 0.8),
+            size=15,
+            color=(1, 1, 1, 1),
         )
         self.plot_widget.addItem(zap_effect)
         QTimer.singleShot(1, lambda: self.create_zap_effect(zap_effect))

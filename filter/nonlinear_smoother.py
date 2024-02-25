@@ -10,7 +10,7 @@ import dev.prob_utils as prob_utils
 import dev.linalg_utils as linalg_utils
 
 from torch.jit.annotations import Tuple, List, Dict
-from dev.linalg_utils import bmv, bip, chol_bmv_solve, bop, bqp, hyperplane_projection
+from filter.linalg_utils import bmv, bip, chol_bmv_solve, bop, bqp, hyperplane_projection
 
 
 class FullRankNonlinearStateSpaceModel(nn.Module):

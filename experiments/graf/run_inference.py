@@ -1,13 +1,13 @@
 import h5py
-import utils
 import torch
 import random
 import nlb_tools
-from nlb_tools.evaluation import velocity_decoding
+import filter.utils
 import numpy as np
 import lightning as lightning
 import matplotlib.pyplot as plt
 import filter.prob_utils as prob_utils
+from nlb_tools.evaluation import velocity_decoding
 
 from tqdm import tqdm
 from matplotlib import cm
@@ -38,13 +38,13 @@ def main():
     torch.set_default_dtype(default_dtype)
 
     """hyperparameters"""
-    n_latents = 40
-    n_latents_read = 40
+    n_latents = 8
+    n_latents_read = 8
     n_hidden_dynamics = 128
     n_hidden_embedding = 128
     n_hidden_current_obs = 256
-    rank_y, rank_b = 20, 5
-    n_samples = 40
+    rank_y, rank_b = 4, 4
+    n_samples = 10
 
     n_samples_plt = 50
     blues = cm.get_cmap("Blues", n_samples_plt)
@@ -53,6 +53,10 @@ def main():
     n_epochs = 1000
 
     """data"""
+    y_val = torch.as_tensor(torch.load('data/valid_data.pt')).type(default_dtype).to(data_device)
+    y_train = torch.as_tensor(torch.load('data/train_data.pt')).type(default_dtype).to(data_device)
+    n_neurons_obs = y_train.shape[-1]
+
     y_val_dataset = torch.utils.data.TensorDataset(y_val,)
     y_train_dataset = torch.utils.data.TensorDataset(y_train,)
     valid_dataloader = torch.utils.data.DataLoader(y_val_dataset, batch_size=batch_sz, shuffle=False)
@@ -62,14 +66,14 @@ def main():
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    H = utils.ReadoutLatentMask(n_latents, n_latents_read)
+    H = filter.utils.ReadoutLatentMask(n_latents, n_latents_read)
     C = torch.nn.Linear(n_latents_read, n_neurons_obs, device=device)
     readout_fn = torch.nn.Sequential(H, C)
     likelihood_pdf = PoissonLikelihood(readout_fn, n_neurons_obs, bin_sz, device=device)
 
     """dynamics module"""
     Q = torch.ones(n_latents, device=device)
-    dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
+    dynamics_fn = filter.utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
     dynamics_mod = DenseGaussianNonlinearDynamics(dynamics_fn, n_latents, approximation_pdf, Q, device=device)
 
     """initial condition"""
@@ -78,15 +82,15 @@ def main():
     initial_condition_pdf = DenseGaussianInitialCondition(n_latents, m0, Q0, device=device)
 
     """local/backward encoder"""
-    encoder = BackwardEncoderLRMvn(n_neurons_enc, n_hidden_embedding, n_latents, rank_y=rank_y, rank_b=rank_b, device=device, dropout=0.0)
-    observation_to_nat = LocalEncoderLRMvn(n_neurons_enc, n_hidden_current_obs, n_latents, likelihood_pdf=likelihood_pdf, rank=rank_y, device=device, dropout=0.0)
+    encoder = BackwardEncoderLRMvn(n_neurons_obs, n_hidden_embedding, n_latents, rank_y=rank_y, rank_b=rank_b, device=device, dropout=0.0)
+    observation_to_nat = LocalEncoderLRMvn(n_neurons_obs, n_hidden_current_obs, n_latents, likelihood_pdf=likelihood_pdf, rank=rank_y, device=device, dropout=0.0)
     nl_filter = NonlinearFilter(dynamics_mod, initial_condition_pdf, device)
 
     """sequence vae"""
     ssm = FullRankNonlinearStateSpaceModel(dynamics_mod, approximation_pdf, likelihood_pdf,
                                            initial_condition_pdf, encoder, observation_to_nat, nl_filter, device=device)
 
-    ssm.likelihood_pdf.readout_fn[-1].bias.data = prob_utils.estimate_poisson_rate_bias(y_train_obs, bin_sz)
+    ssm.likelihood_pdf.readout_fn[-1].bias.data = prob_utils.estimate_poisson_rate_bias(y_train, bin_sz)
 
     opt = torch.optim.Adam(ssm.parameters(), lr=1e-3, weight_decay=1e-6)
 
@@ -108,6 +112,9 @@ def main():
             p_bar.set_description(f'loss: {loss.item()}')
 
         avg_loss /= len(train_dataloader)
+
+        if t % 100 == 0:
+            torch.save(ssm.state_dict(), 'results/ssm_state_dict_epoch_{t}.pt')
 
 
 

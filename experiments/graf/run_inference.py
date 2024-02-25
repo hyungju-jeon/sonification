@@ -27,8 +27,8 @@ import matplotlib
 
 def main():
     bin_sz = 20e-3
-    device = 'cpu'
-    data_device = 'cpu'
+    device = 'cuda:1'
+    data_device = 'cuda:1'
     bin_sz_ms = int(bin_sz * 1e3)
 
     random.seed(1234)
@@ -40,16 +40,16 @@ def main():
     """hyperparameters"""
     n_latents = 8
     n_latents_read = 8
-    n_hidden_dynamics = 128
-    n_hidden_embedding = 128
-    n_hidden_current_obs = 256
+    n_hidden_dynamics = 64
+    n_hidden_embedding = 64
+    n_hidden_current_obs = 128
     rank_y, rank_b = 4, 4
     n_samples = 10
 
     n_samples_plt = 50
     blues = cm.get_cmap("Blues", n_samples_plt)
 
-    batch_sz = 128
+    batch_sz = 256
     n_epochs = 1000
 
     """data"""
@@ -114,8 +114,9 @@ def main():
         avg_loss /= len(train_dataloader)
 
         if t % 100 == 0:
-            torch.save(ssm.state_dict(), 'results/ssm_state_dict_epoch_{t}.pt')
+            torch.save(ssm.state_dict(), f'results/ssm_state_dict_epoch_{t}.pt')
 
+    torch.save(ssm.state_dict(), f'results/ssm_state_dict_epoch_{n_epochs}.pt')
 
 
 if __name__ == '__main__':

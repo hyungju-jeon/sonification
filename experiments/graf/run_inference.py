@@ -19,7 +19,7 @@ from filter.dynamics import DenseGaussianNonlinearDynamics
 from filter.approximations import DenseGaussianApproximations
 from filter.encoders import LocalEncoderLRMvn, BackwardEncoderLRMvn
 
-from filter.nonlinear_smoother import LowRankNonlinearStateSpaceModel, NonlinearFilter, FullRankNonlinearStateSpaceModel
+from filter.nonlinear_smoother import NonlinearFilter, FullRankNonlinearStateSpaceModel
 
 
 import matplotlib

@@ -6,8 +6,8 @@ import numpy as np
 import torch.nn as nn
 import lightning as lightning
 import torch.nn.functional as Fn
-import dev.prob_utils as prob_utils
-import dev.linalg_utils as linalg_utils
+import filter.prob_utils as prob_utils
+import filter.linalg_utils as linalg_utils
 
 from torch.jit.annotations import Tuple, List, Dict
 from filter.linalg_utils import bmv, bip, chol_bmv_solve, bop, bqp, hyperplane_projection

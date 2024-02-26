@@ -64,6 +64,44 @@ class FullRankNonlinearStateSpaceModel(nn.Module):
         return z_s, stats
 
 
+class FullRankNonlinearStateSpaceModelFilter(nn.Module):
+    def __init__(self, dynamics_mod, approximation_pdf, likelihood_pdf,
+                 initial_c_pdf, ell_grad, nl_filter, device='cpu'):
+        super(FullRankNonlinearStateSpaceModelFilter, self).__init__()
+
+        self.device = device
+        self.nl_filter = nl_filter
+        self.ell_grad = ell_grad
+        self.dynamics_mod = dynamics_mod
+        self.initial_c_pdf = initial_c_pdf
+        self.likelihood_pdf = likelihood_pdf
+        self.approximation_pdf = approximation_pdf
+
+    @torch.jit.export
+    def forward(self,
+                y,
+                n_samples: int,
+                p_mask: float=0.0):
+
+        z_s, stats = self.fast_filter_1_to_T(y, n_samples, p_mask)
+        kl = full_rank_mvn_kl(stats['m_f'], stats['P_f_chol'], stats['m_p'], stats['P_p_chol'])
+        ell = self.likelihood_pdf.get_ell(y, z_s).mean(dim=0)
+
+        loss = kl - ell
+        loss = loss.sum(dim=-1).mean()
+        return loss, z_s, stats
+
+    def fast_filter_1_to_T(self,
+                           y,
+                           n_samples: int,
+                           p_mask: float=0.0):
+
+        k_y, K_y = self.ell_grad(y)
+        z_s, stats = self.nl_filter(k_y, K_y, n_samples, p_mask=p_mask)
+        return z_s, stats
+
+
+
 class NonlinearFilter(nn.Module):
     def __init__(self, dynamics_mod, initial_c_pdf, device):
         super(NonlinearFilter, self).__init__()

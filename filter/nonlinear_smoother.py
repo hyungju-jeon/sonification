@@ -81,9 +81,10 @@ class FullRankNonlinearStateSpaceModelFilter(nn.Module):
     def forward(self,
                 y,
                 n_samples: int,
+                u=None,
                 p_mask: float=0.0):
 
-        z_s, stats = self.fast_filter_1_to_T(y, n_samples, p_mask)
+        z_s, stats = self.fast_filter_1_to_T(y, u, n_samples, p_mask)
         kl = full_rank_mvn_kl(stats['m_f'], stats['P_f_chol'], stats['m_p'], stats['P_p_chol'])
         ell = self.likelihood_pdf.get_ell(y, z_s).mean(dim=0)
 
@@ -93,11 +94,12 @@ class FullRankNonlinearStateSpaceModelFilter(nn.Module):
 
     def fast_filter_1_to_T(self,
                            y,
+                           u,
                            n_samples: int,
                            p_mask: float=0.0):
 
         k_y, K_y = self.ell_grad(y)
-        z_s, stats = self.nl_filter(k_y, K_y, n_samples, p_mask=p_mask)
+        z_s, stats = self.nl_filter(k_y, K_y, n_samples, input=u, p_mask=p_mask)
         return z_s, stats
 
 
@@ -114,7 +116,8 @@ class NonlinearFilter(nn.Module):
                 k: torch.Tensor,
                 K: torch.Tensor,
                 n_samples: int,
-                p_mask: float=0.0):
+                p_mask: float=0.0,
+                u=None):
 
         # mask data, 0: data available, 1: data missing
         n_trials, n_time_bins, n_latents, rank = K.shape
@@ -135,7 +138,11 @@ class NonlinearFilter(nn.Module):
                 z_f_t, m_f_t, P_f_chol_t, P_p_chol_t = filter_step_0(m_0, k[:, 0], K[:, 0], P_0_diag, n_samples)
                 m_p.append(m_0 * torch.ones(n_trials, n_latents, device=k[:, 0].device))
             else:
-                m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t-1]).movedim(0, -1)
+                if u is None:
+                    m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t-1]).movedim(0, -1)
+                else:
+                    m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t - 1]).movedim(0, -1) + u[:, t]
+
                 z_f_t, m_p_t, m_f_t, P_f_chol_t, P_p_chol_t = filter_step_t(m_fn_z_tm1, k[:, t], K[:, t], Q_diag, t_mask[t])
                 m_p.append(m_p_t)
 

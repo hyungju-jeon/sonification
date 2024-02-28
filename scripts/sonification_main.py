@@ -56,12 +56,16 @@ async def init_main():
     C, b = simulate_neuron_parameters(
         CYCLE_FAST, num_neurons, TARGET_SNR, TARGET_FIRING_RATE * dt
     )
-    fast_spike_block = LatentModule.SpikeGenerator(C, b, latent_block=fast_latent_block)
+    fast_spike_block = LatentModule.SpikeGenerator(
+        C, b, dt, latent_block=fast_latent_block
+    )
     print(C)
     C, b = simulate_neuron_parameters(
         CYCLE_SLOW, num_neurons, TARGET_SNR, TARGET_FIRING_RATE * dt
     )
-    slow_spike_block = LatentModule.SpikeGenerator(C, b, latent_block=slow_latent_block)
+    slow_spike_block = LatentModule.SpikeGenerator(
+        C, b, dt, latent_block=slow_latent_block
+    )
 
     await asyncio.gather(
         fast_latent_block.start(),
@@ -70,7 +74,7 @@ async def init_main():
         slow_spike_block.start(SPIKES_SLOW),
         trajectory_sending_loop(ms_to_ns(1), fast_latent_block, verbose=True),
         spike_sending_loop(
-            ms_to_ns(0.5), fast_spike_block, slow_spike_block, verbose=True
+            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=True
         ),
     )
 

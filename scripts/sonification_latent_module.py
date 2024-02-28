@@ -127,7 +127,7 @@ class SpikeGenerator:
         self.dt = dt
         # Imposing explicit structure for testing...
         # for i in range(10):
-        # C[:, 5 * int(i) : 5 * int(i) + 5] = C[:, i][:, None]
+        #     C[:, 5 * int(i) : 5 * int(i) + 5] = C[:, i][:, None]
 
         self.C = C
         self.b = b

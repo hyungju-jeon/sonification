@@ -122,9 +122,9 @@ class LatentDynamics:
 
 
 class SpikeGenerator:
-    def __init__(self, C, b, latent_block: LatentDynamics):
+    def __init__(self, C, b, dt, latent_block: LatentDynamics):
         self.num_neurons = C.shape[1]
-
+        self.dt = dt
         # Imposing explicit structure for testing...
         # for i in range(10):
         # C[:, 5 * int(i) : 5 * int(i) + 5] = C[:, i][:, None]
@@ -140,7 +140,7 @@ class SpikeGenerator:
             self.firing_rates = np.exp(self.latent_block.get_state() @ self.C + self.b)
             self.y = np.random.poisson(self.firing_rates)
             spike[0] = self.y
-            await busy_timer(ms_to_ns(0.2))
+            await busy_timer(ms_to_ns(self.dt))
 
 
 class LatentInference:

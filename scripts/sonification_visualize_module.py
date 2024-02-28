@@ -22,7 +22,7 @@ packet_count = 0
 num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
 DISC_RADIUS_INC = [20]
-SEQ_TRIGGER = [0]
+SEQUENCE_TRIGGER = [0]
 
 
 class RasterWithTrace3DVisualizer:
@@ -132,18 +132,16 @@ class SpikeBubble3DVisualizer:
         self.data = SPIKES[0]
         # Check and remove all marked circles (finished ripple animations)
         self.remove_marked_circles()
-
-        # Update centroid location and replot centroid indicator
         # self.update_centroid_indicator()
 
         if self.frame % 1 == 0:
-            self.estimate_velocity()
+            self.update_centroid()
             if any(self.data > 0):
                 self.trigger_spike(np.where(self.data > 0)[0])
         print(f"Frame: {self.frame}, Count: {packet_count}")
         self.frame += 1
 
-    def estimate_velocity(self):
+    def update_centroid(self):
         self.velocity = np.random.uniform(-1, 1, (num_neurons, 2))
         for i, center in enumerate(self.centroid_positions):
             self.centroid_positions[i] += 0.1 * self.velocity[i]
@@ -261,6 +259,13 @@ class SpikeDisc2DVisualizer:
                 for _ in range(num_neurons)
             ]
         )
+        self.target_positions = np.zeros((num_neurons, 2))
+        for i in range(10):
+            self.target_positions[10 * (i) : 10 * (i + 1), :] = [
+                9 * np.cos(2 * np.pi * i / 10),
+                9 * np.sin(2 * np.pi * i / 10),
+            ]
+
         self.draw_centroids()
 
         # Add function that will be called when the timer times out
@@ -307,7 +312,7 @@ class SpikeDisc2DVisualizer:
 
         if self.frame % 10 == 0:
             self.shrink_circle()
-            # self.estimate_velocity()
+            self.estimate_velocity()
             # self.move_centroids()
             if any(SPIKES[0] > 0):
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
@@ -324,6 +329,9 @@ class SpikeDisc2DVisualizer:
         """
         self.size[index] += DISC_RADIUS_INC[0]
         self.color[index, -1] = 200
+        if SEQUENCE_TRIGGER[0] == 1:
+            self.velocity = self.centroid_positions - self.target_positions
+            self.centroid_positions[index] -= 0.3 * self.velocity[index]
 
         # Add the zapping effect element
         zap_effect = pg.ScatterPlotItem()
@@ -349,6 +357,10 @@ class SpikeDisc2DVisualizer:
         self.indicators.setData(
             size=self.size, pos=self.centroid_positions, brush=self.color
         )
+
+    def estimate_velocity(self):
+        self.velocity = np.random.uniform(-1, 1, (num_neurons, 2))
+        self.centroid_positions += 0.03 * self.velocity
 
 
 # visualizer = RasterWithTraceVisualizer(0)
@@ -384,6 +396,7 @@ async def init_main():
     dispatcher_spike.map("/SPIKES", spike_pacer.spike_osc_handler)
     dispatcher_max = Dispatcher()
     dispatcher_max.map("/DISC_RADIUS_INC", spike_pacer.max_control_osc_handler)
+    dispatcher_max.map("/SEQUENCE_TRIGGER", spike_pacer.max_control_osc_handler)
 
     server_spike = AsyncIOOSCUDPServer(
         (SERVER_IP, SPIKE_PORT), dispatcher_spike, asyncio.get_event_loop()

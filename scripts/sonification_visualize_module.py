@@ -24,7 +24,7 @@ num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
 LATENT = [np.zeros(8)]
 DISC_RADIUS_INC = [10]
-DECAY_FACTOR = [0.9]
+DECAY_FACTOR = [0.99]
 SEQUENCE_TRIGGER = [0]
 
 
@@ -499,12 +499,8 @@ class LatentOrbitVisualizer:
         color = color[: self.L]
         color = color[::-1]
         self.data = np.zeros((8, self.L + self.buffer))
-        # self.L = 1000
-
-        # self.glColor = [pg.glColor(x) for x in color]
 
         self.z = [x for x in range(8) if x not in [self.x, self.y]]
-
         for i in range(6):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
@@ -512,12 +508,7 @@ class LatentOrbitVisualizer:
                 width=5,
                 antialias=True,
             )
-            self.heads[i] = gl.GLScatterPlotItem(
-                pos=np.zeros((1, 3)),
-                size=0,
-            )
             self.plot_widget.addItem(self.traces[i])
-            self.plot_widget.addItem(self.heads[i])
         self.frame = 0
 
     def animation(self):
@@ -533,20 +524,16 @@ class LatentOrbitVisualizer:
             self.frame = self.L
         if self.frame > 0:
             self.data[:, self.frame] = LATENT[0]
-
-        self.data = np.roll(self.data, -1, axis=1)
-        self.data[:, -1] = LATENT[0]
-
-        if self.frame % 10 == 0:
+        if self.frame % 10 == 0 and self.frame > 0:
+            slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
             for i in range(6):
                 pts = np.vstack(
                     [
-                        self.data[i, :] * 5,
-                        self.data[i + 1, :] * 5,
-                        self.data[i + 2, :] * 5,
+                        self.data[i, slice_window] * 5,
+                        self.data[i + 1, slice_window] * 5,
+                        self.data[i + 2, slice_window] * 5,
                     ]
                 ).transpose()
-                self.heads[i].setData(pos=pts[-1, :], size=10)
                 self.traces[i].setData(
                     pos=pts,
                 )
@@ -572,7 +559,7 @@ class LatentOrbitVisualizer:
 # visualizer = SpikeBubble3DVisualizer()
 # visualizer = SpikeDisc2DVisualizer()
 # visualizer = SpikeRaster2DVisualizer()
-visualizer = LatentOrbitVisualizer(0, 1)
+# visualizer = LatentOrbitVisualizer(0, 1)
 
 
 class SpikePacer(QtCore.QObject):
@@ -598,10 +585,6 @@ class SpikePacer(QtCore.QObject):
         LATENT[0] = np.array(args)
         packet_count += 1
         self.latent_trigger.emit()
-        # print(f"Received update for LATENT : {args}")
-        # print(
-        #     f"Received update for LATENT : {args}, total packet count: {packet_count}"
-        # )
 
     def max_control_osc_handler(self, address, *args):
         exec("global " + address[1:])

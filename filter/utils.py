@@ -349,3 +349,26 @@ def count_parameters(model):
 def matrix_index_select(A, indices):
     # useful for batching over index selection
     return A[indices]
+
+
+def sample_lds(u, A, B, C, b, Q_diag, R_diag, m_0, Q_0_diag, device='cpu'):
+    # z_t = A @ z_{t-1} + B @ u_t + v_t, v_t ~ N(0, Q)
+    # y_t = C @ z_t + b + w_t, w_t ~ N(0, R)
+    n_trials, n_time_bins, n_inputs = u.shape
+    n_neurons, n_latents = C.shape
+
+    y = torch.zeros((n_trials, n_time_bins, n_neurons), device=device)
+    z = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
+
+    for t in range(n_time_bins):
+        if t == 0:
+            z[0] = m_0 + Q_0_diag * torch.randn_like(z[:, 0]) + bmv(B, u[0])
+        else:
+            z[:, t] = bmv(A, z[:, t-1]) + Q_diag * torch.randn_like(z[:, t-1]) + bmv(B, u[t])
+
+        y[:, t] = bmv(C, z[:, t]) + b + R_diag * torch.randn_like(y[:, t])
+
+    return y, z
+
+
+

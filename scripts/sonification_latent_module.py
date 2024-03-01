@@ -140,7 +140,7 @@ class SpikeGenerator:
             self.firing_rates = np.exp(self.latent_block.get_state() @ self.C + self.b)
             self.y = np.random.poisson(self.firing_rates)
             spike[0] = self.y
-            await busy_timer(ms_to_ns(self.dt))
+            await busy_timer(self.dt * 1e9)
 
 
 class LatentInference:

@@ -8,7 +8,7 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 
 # ----------------------- OSC Related Stuff ---------------------- #
 # OSC ips / ports
-global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, LATENT_PORT, DISPATCHER
+global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, LATENT_PORT, DISPATCHER, TIMER_DELAY
 SERVER_IP = "127.0.0.1"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
@@ -16,6 +16,7 @@ SPIKE_PORT = 1112
 LATENT_PORT = 1113
 MAX_INPUT_PORT = 1211
 MAX_CONTROL_PORT = 1212
+TIMER_DELAY = 1
 
 DISPATCHER = Dispatcher()
 DISPATCHER.set_default_handler(
@@ -36,11 +37,11 @@ async def busy_timer(duration):
     start = time.perf_counter_ns()
     while True:
         await asyncio.sleep(0)
-        if time.perf_counter_ns() - start >= duration:
+        if time.perf_counter_ns() - start >= duration * TIMER_DELAY:
             break
 
 
-async def trajectory_sending_loop(interval_ns, latent_block, verbose=False):
+async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
     """
     Sends packets of data to Max/MSP at regular intervals.
 
@@ -56,7 +57,9 @@ async def trajectory_sending_loop(interval_ns, latent_block, verbose=False):
         start_t = time.perf_counter_ns()
         OSCsender.send_message(
             "/trajectory",
-            [latent_block.INPUT_X, latent_block.INPUT_Y],
+            np.concatenate(
+                [fask_block.get_state(), slow_block.get_state()], axis=0
+            ).tolist(),
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)

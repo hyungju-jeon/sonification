@@ -15,11 +15,10 @@ from filter.linalg_utils import bmv, bip, chol_bmv_solve, bop, bqp
 
 class FullRankNonlinearStateSpaceModel(nn.Module):
     def __init__(self, dynamics_mod, approximation_pdf, likelihood_pdf,
-                 initial_c_pdf, encoder, ell_grad, nl_filter, device='cpu'):
+                 initial_c_pdf, ell_grad, nl_filter, device='cpu'):
         super(FullRankNonlinearStateSpaceModel, self).__init__()
 
         self.device = device
-        self.encoder = encoder
         self.nl_filter = nl_filter
         self.ell_grad = ell_grad
         self.dynamics_mod = dynamics_mod
@@ -65,11 +64,13 @@ class FullRankNonlinearStateSpaceModel(nn.Module):
 
 
 class FullRankNonlinearStateSpaceModelFilter(nn.Module):
-    def __init__(self, dynamics_mod, approximation_pdf, likelihood_pdf,
+    def __init__(self, dynamics_mod, approximation_pdf, likelihood_pdf, B,
                  initial_c_pdf, ell_grad, nl_filter, device='cpu'):
         super(FullRankNonlinearStateSpaceModelFilter, self).__init__()
 
         self.device = device
+
+        self.B = B
         self.nl_filter = nl_filter
         self.ell_grad = ell_grad
         self.dynamics_mod = dynamics_mod
@@ -84,13 +85,62 @@ class FullRankNonlinearStateSpaceModelFilter(nn.Module):
                 u=None,
                 p_mask: float=0.0):
 
-        z_s, stats = self.fast_filter_1_to_T(y, u, n_samples, p_mask)
+        u_in = self.B(u)
+        z_s, stats = self.fast_filter_1_to_T(y, u=u_in, n_samples=n_samples, p_mask=p_mask)
         kl = full_rank_mvn_kl(stats['m_f'], stats['P_f_chol'], stats['m_p'], stats['P_p_chol'])
         ell = self.likelihood_pdf.get_ell(y, z_s).mean(dim=0)
 
         loss = kl - ell
         loss = loss.sum(dim=-1).mean()
         return loss, z_s, stats
+
+    def step_t(self,
+               y_t,
+               u_t,
+               n_samples,
+               z_tm1
+               ):
+
+        u_in = self.B(u_t)
+        k_y, K_y = self.ell_grad(y_t[:, None, :])
+        k_y, K_y = k_y.squeeze(1), K_y.squeeze(1)
+
+        Q_diag = Fn.softplus(self.dynamics_mod.log_Q)
+        m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_tm1).movedim(0, -1) + u_in.unsqueeze(-1)
+        z_f_t, m_p_t, m_f_t, P_f_chol_t, P_p_chol_t = filter_step_t(m_fn_z_tm1, k_y, K_y, Q_diag, False)
+
+        stats = {}
+        stats['m_p'] = m_p_t
+        stats['m_f'] = m_f_t
+        stats['P_f_chol'] = P_f_chol_t
+        stats['P_p_chol'] = P_p_chol_t
+
+        return stats, z_f_t
+
+    def step_0(self,
+               y_t,
+               u_t,
+               n_samples):
+
+        u_in = self.B(u_t)
+        k_y, K_y = self.ell_grad(y_t[:, None, :])
+        k_y, K_y = k_y.squeeze(1), K_y.squeeze(1)
+
+        Q_0_diag = Fn.softplus(self.initial_c_pdf.log_v0)
+        m_0 = self.initial_c_pdf.m0
+
+        m_fn_z_tm1 = torch.ones((y_t.shape[0], k_y.shape[-1], n_samples), device=y_t.device) * m_0[None, :, None]
+        m_fn_z_tm1 += u_in.unsqueeze(-1)
+
+        z_f_t, m_p_t, m_f_t, P_f_chol_t, P_p_chol_t = filter_step_t(m_fn_z_tm1, k_y, K_y, Q_0_diag, False)
+
+        stats = {}
+        stats['m_p'] = m_p_t
+        stats['m_f'] = m_f_t
+        stats['P_f_chol'] = P_f_chol_t
+        stats['P_p_chol'] = P_p_chol_t
+
+        return stats, z_f_t
 
     def fast_filter_1_to_T(self,
                            y,
@@ -99,7 +149,7 @@ class FullRankNonlinearStateSpaceModelFilter(nn.Module):
                            p_mask: float=0.0):
 
         k_y, K_y = self.ell_grad(y)
-        z_s, stats = self.nl_filter(k_y, K_y, n_samples, input=u, p_mask=p_mask)
+        z_s, stats = self.nl_filter(k_y, K_y, n_samples=n_samples, u=u, p_mask=p_mask)
         return z_s, stats
 
 
@@ -141,7 +191,7 @@ class NonlinearFilter(nn.Module):
                 if u is None:
                     m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t-1]).movedim(0, -1)
                 else:
-                    m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t - 1]).movedim(0, -1) + u[:, t]
+                    m_fn_z_tm1 = self.dynamics_mod.mean_fn(z_f[t - 1]).movedim(0, -1) + u[:, t].unsqueeze(-1)
 
                 z_f_t, m_p_t, m_f_t, P_f_chol_t, P_p_chol_t = filter_step_t(m_fn_z_tm1, k[:, t], K[:, t], Q_diag, t_mask[t])
                 m_p.append(m_p_t)

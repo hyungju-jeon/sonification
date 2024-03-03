@@ -125,19 +125,20 @@ class SpikeGenerator:
     def __init__(self, C, b, dt, latent_block: LatentDynamics):
         self.num_neurons = C.shape[1]
         self.dt = dt
-        # Imposing explicit structure for testing...
-        # for i in range(10):
-        #     C[:, 5 * int(i) : 5 * int(i) + 5] = C[:, i][:, None]
 
         self.C = C
         self.b = b
         self.latent_block = latent_block
-        self.firing_rates = np.exp(self.latent_block.get_state() @ self.C + self.b)
+        firing_r = np.exp(self.latent_block.get_state()[:2] @ self.C[0] + self.b[0])
+        firing_p = np.exp(self.latent_block.get_state()[2:] @ self.C[1] + self.b[1])
+        self.firing_rates = np.hstack([firing_r, firing_p])
         self.y = np.random.poisson(self.firing_rates)
 
     async def start(self, spike):
         while True:
-            self.firing_rates = np.exp(self.latent_block.get_state() @ self.C + self.b)
+            firing_r = np.exp(self.latent_block.get_state()[:2] @ self.C[0] + self.b[0])
+            firing_p = np.exp(self.latent_block.get_state()[2:] @ self.C[1] + self.b[1])
+            self.firing_rates = np.hstack([firing_r, firing_p])
             self.y = np.random.poisson(self.firing_rates)
             spike[0] = self.y
             await busy_timer(self.dt * 1e9)
@@ -147,35 +148,10 @@ class LatentInference:
     def __init__(self):
         pass
 
-
-# ----------------- Loop Components  ------------------- #
-def simulate_neuron_parameters(
-    cycle_info, num_neurons, target_SNR, target_rate_per_bin
-):
-    dt = cycle_info["dt"]
-    reference_cycle = limit_circle(**cycle_info)
-    perturb_cycle = limit_circle(**cycle_info)
-    two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-
-    latent_trajectory = two_cycle.generate_trajectory(1000)
-    latent_dim = latent_trajectory.shape[1]
-
-    C = np.random.randn(latent_dim, num_neurons)  # loading matrix
-    b = 1.0 * np.random.rand(1, num_neurons) + np.log(target_rate_per_bin)  # bias
-
-    C = generate_random_loading_matrix(latent_dim, num_neurons, 1, 0, C=C)
-
-    b = 1.0 * np.random.rand(1, num_neurons) - np.log(target_rate_per_bin)
-    C, b, SNR = scaleCforTargetSNR(
-        latent_trajectory,
-        C,
-        b,
-        target_rate_per_bin,
-        targetSNR=target_SNR,
-        SNR_method=computeSNR,
-    )
-
-    return C, b
+    def start(self):
+        while True:
+            print(SPIKES_FAST[0].T)
+            # await busy_timer(ms_to_ns(10))
 
 
 if __name__ == "__main__":

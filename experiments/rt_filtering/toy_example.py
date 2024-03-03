@@ -13,7 +13,7 @@ from filter.dynamics import DenseGaussianInitialCondition
 from filter.dynamics import DenseGaussianNonlinearDynamics
 from filter.approximations import DenseGaussianApproximations
 from filter.encoders import LocalEncoderLRMvn, BackwardEncoderLRMvn
-from filter.likelihoods import PoissonLikelihood, GaussianLikelihood
+from filter.likelihoods import PoissonLikelihood, GaussianLikelihood, LinearPolarToCartesian
 
 from filter.nonlinear_smoother import NonlinearFilter, FullRankNonlinearStateSpaceModelFilter
 
@@ -68,8 +68,9 @@ def main():
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    C = torch.nn.Linear(n_latents, n_neurons, device=device)
-    likelihood_pdf = GaussianLikelihood(C, n_neurons, R_diag, device=device)
+    C = LinearPolarToCartesian(n_latents, n_neurons, 4, device=device)
+    C.linear.weight.data = None
+    likelihood_pdf = PoissonLikelihood(C, n_neurons, bin_sz, device=device)
 
     """dynamics module"""
     # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)

@@ -1,7 +1,9 @@
 # %%
 import asyncio
-
+from re import L
+import sys
 import sonification_latent_module as LatentModule
+from multiprocessing import Process, process
 from sonification_latent_module import SPIKES_FAST, SPIKES_SLOW
 from sonification_communication_module import *
 
@@ -9,27 +11,27 @@ from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
 
 import numpy as np
-from numpy import random
+import random
 
 
 # ---------------------------------------------------------------- #
 # Common Parameters
 dt = 1e-3  # 1ms for dynamic system update
 num_neurons = 50
-TARGET_FIRING_RATE = 5
-TARGET_SNR = -5
+TARGET_FIRING_RATE = 20
+TARGET_SNR = 0
 CYCLE_FAST = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 10,
-    "Q": np.array([[1e-10, 0.0], [0.0, 1e-10]]),
+    "w": 2 * np.pi * 2,
+    "Q": np.array([[1e-3, 0.0], [0.0, 1e-3]]),
     "dt": dt,
 }
 CYCLE_SLOW = {
     "x0": np.array([1, 1]),
     "d": 1,
     "w": 2 * np.pi * 1,
-    "Q": np.array([[1e-10, 0.0], [0.0, 1e-10]]),
+    "Q": np.array([[1e-3, 0.0], [0.0, 1e-3]]),
     "dt": dt,
 }
 
@@ -49,22 +51,29 @@ def ms_to_ns(ms):
     return ms * 1e6
 
 
+# ---------------------------------------------------------------- #
+# Construct Loading matrix
+
+
 async def init_main():
-    global C, b
+    loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
+    loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
+    param = np.load(loading_matrix_fast_name, allow_pickle=True)
+    C_fast, b_fast = param["C"], param["b"]
+    param = np.load(loading_matrix_slow_name, allow_pickle=True)
+    C_slow, b_slow = param["C"], param["b"]
+
+    C = np.vstack([C_fast, C_slow])
+    b = np.vstack([b_fast, b_slow])
+
     fast_latent_block = LatentModule.LatentDynamics(CYCLE_FAST, verbose=False)
     slow_latent_block = LatentModule.LatentDynamics(CYCLE_SLOW, verbose=False)
-    C, b = simulate_neuron_parameters(
-        CYCLE_FAST, num_neurons, TARGET_SNR, TARGET_FIRING_RATE * dt
-    )
     fast_spike_block = LatentModule.SpikeGenerator(
-        C, b, dt, latent_block=fast_latent_block
+        C_fast, b_fast, dt, latent_block=fast_latent_block
     )
-    print(C)
-    C, b = simulate_neuron_parameters(
-        CYCLE_SLOW, num_neurons, TARGET_SNR, TARGET_FIRING_RATE * dt
-    )
+
     slow_spike_block = LatentModule.SpikeGenerator(
-        C, b, dt, latent_block=slow_latent_block
+        C_slow, b_slow, dt, latent_block=slow_latent_block
     )
 
     await asyncio.gather(
@@ -72,40 +81,19 @@ async def init_main():
         slow_latent_block.start(),
         fast_spike_block.start(SPIKES_FAST),
         slow_spike_block.start(SPIKES_SLOW),
-        trajectory_sending_loop(ms_to_ns(1), fast_latent_block, verbose=True),
+        trajectory_sending_loop(
+            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=True
+        ),
         spike_sending_loop(
             ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=True
         ),
     )
 
 
-# ----------------- Loop Components  ------------------- #
-def simulate_neuron_parameters(
-    cycle_info, num_neurons, target_SNR, target_rate_per_bin
-):
-    dt = cycle_info["dt"]
-    reference_cycle = limit_circle(**cycle_info)
-    perturb_cycle = limit_circle(**cycle_info)
-    two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-
-    latent_trajectory = two_cycle.generate_trajectory(2000)
-    latent_dim = latent_trajectory.shape[1]
-
-    C = generate_random_loading_matrix(latent_dim, num_neurons, 1, 0.2)
-    b = 1.0 * np.random.rand(1, num_neurons) - np.log(target_rate_per_bin)
-
-    C, b, SNR = scaleCforTargetSNR(
-        latent_trajectory,
-        C,
-        b,
-        target_rate_per_bin,
-        targetSNR=target_SNR,
-        SNR_method=computeSNR,
-    )
-
-    return C, b
-
+# %%
 
 if __name__ == "__main__":
     random.seed(0)
+    np.random.seed(0)
+
     asyncio.run(init_main())

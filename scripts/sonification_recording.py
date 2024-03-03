@@ -519,16 +519,16 @@ class LatentOrbitVisualizer:
         """
         Saves the current frame of the animation to a file.
         """
-        fname = f"/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/latent_3/frame{self.count:06}.png"
+        fname = f"/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/latent_4/frame{self.count:06}.png"
         self.plot_widget.grabFramebuffer().save(fname)
 
 
 # %%
-visualizer_raster = SpikeRaster2DVerticalVisualizer()
-visualizer = SpikeDisc2DVisualizer()
+# visualizer_raster = SpikeRaster2DVerticalVisualizer()
+# visualizer = SpikeDisc2DVisualizer()
 visualizer_latent = LatentOrbitVisualizer(2, 4)
 iter = 0
-
+smooth_latent = smooth_latent - np.mean(smooth_latent, axis=0)
 for orientation, trial in zip(orientation_sequence, trial_sequence):
     spike_train = create_spike_train_from_sequence(int(orientation), int(trial) - 1)
     current_latent = smooth_latent[iter * 2560 : (iter + 1) * 2560, :] / 20

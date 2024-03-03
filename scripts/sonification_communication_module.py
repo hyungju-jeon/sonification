@@ -8,12 +8,14 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 
 # ----------------------- OSC Related Stuff ---------------------- #
 # OSC ips / ports
-global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, LATENT_PORT, DISPATCHER, TIMER_DELAY
+global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, SPIKE_PORT_2, TRUE_LATENT_PORT, INFERRED_LATENT_PORT, DISPATCHER, TIMER_DELAY
 SERVER_IP = "127.0.0.1"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
 SPIKE_PORT = 1112
-LATENT_PORT = 1113
+SPIKE_PORT_2 = 1113
+TRUE_LATENT_PORT = 1114
+INFERRED_LATENT_PORT = 1114
 MAX_INPUT_PORT = 1211
 MAX_CONTROL_PORT = 1212
 TIMER_DELAY = 1
@@ -52,7 +54,7 @@ async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         None
     """
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
-    OSCsender = SimpleUDPClient(SERVER_IP, LATENT_PORT)
+    OSCsender = SimpleUDPClient(SERVER_IP, TRUE_LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
         OSCsender.send_message(
@@ -82,17 +84,23 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
         None
     """
     OSCsender = SimpleUDPClient(SERVER_IP, SPIKE_PORT)
+    OSCsender_2 = SimpleUDPClient(SERVER_IP, SPIKE_PORT_2)
     while True:
         start_t = time.perf_counter_ns()
+        msg = np.stack(
+            [
+                fast_block.y[0] > 0,
+                slow_block.y[0] > 0,
+            ],
+            axis=0,
+        ).tolist()
         OSCsender.send_message(
             "/SPIKES",
-            np.stack(
-                [
-                    fast_block.y[0] > 0,
-                    slow_block.y[0] > 0,
-                ],
-                axis=0,
-            ).tolist(),
+            msg,
+        )
+        OSCsender_2.send_message(
+            "/SPIKES",
+            msg,
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)

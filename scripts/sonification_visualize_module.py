@@ -32,10 +32,6 @@ DISC_DECAY_FACTOR = [0.99]
 LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.95]
 
-WALL_RASTER_LEFT = [1]
-WALL_RASTER_RIGHT = [1]
-WALL_RASTER_TOP = [1]
-WALL_RASTER_BOT = [1]
 WALL_SPIKE = [1]
 WALL_TRUE_LATENT = [1]
 WALL_INFERRED_LATENT = [1]
@@ -398,7 +394,10 @@ class SpikeBall3DVisualizer:
         Args:
             index (int): The index of the spike to trigger.
         """
-        self.size[index] += DISC_RADIUS_INC[0]
+        if WALL_SPIKE[0] == 1:
+            self.size[index] += DISC_RADIUS_INC[0]
+        else:
+            self.size[index] = 0
         self.color[index, -1] = 0.9
         if self.count > 10000:
             SPIKE_ORGANIZATION[0] = 1
@@ -781,7 +780,7 @@ class LatentOrbitVisualizer_2:
                 self.traces[i].setData(
                     pos=pts,
                 )
-            print(f"Frame: {self.count}, Count: {packet_count}")
+            # print(f"Frame: {self.count}, Count: {packet_count}")
         self.frame += 1
 
 
@@ -880,6 +879,30 @@ class SpikePacer(QtCore.QObject):
         # packet_count += 1
         self.latent_trigger.emit()
 
+    def max_switch_wall_raster_L(self, address, *args):
+        vis_wall_raster_left.img.setVisible(args[0])
+
+    def max_switch_wall_raster_R(self, address, *args):
+        vis_wall_raster_right.img.setVisible(args[0])
+
+    def max_switch_wall_raster_T(self, address, *args):
+        vis_wall_raster_top.img.setVisible(args[0])
+
+    def max_switch_wall_raster_B(self, address, *args):
+        vis_wall_raster_bottom.img.setVisible(args[0])
+
+    def max_switch_wall_spike(self, address, *args):
+        vis_wall_spike.indicators.setVisible(args[0])
+
+    def max_switch_wall_true_latent(self, address, *args):
+        print(args)
+        for trace in vis_wall_true_latent.traces.items():
+            trace[1].setVisible(args[0])
+
+    def max_switch_wall_inferred_latent(self, address, *args):
+        for trace in vis_wall_true_latent.traces.items():
+            trace[1].setVisible(args[0])
+
     def max_control_osc_handler(self, address, *args):
         exec("global " + address[1:])
         exec(address[1:] + "[0] = args[0]")
@@ -901,12 +924,22 @@ async def init_main():
     dispatcher_python = Dispatcher()
     dispatcher_python.map("/SPIKES", spike_pacer.spike_osc_handler)
     dispatcher_python.map("/trajectory", spike_pacer.latent_osc_handler)
+
     dispatcher_max = Dispatcher()
     dispatcher_max.map("/DISC_RADIUS_INC", spike_pacer.max_control_osc_handler)
     dispatcher_max.map("/SEQUENCE_TRIGGER", spike_pacer.max_control_osc_handler)
+    dispatcher_max.map("/WALL_RASTER_L", spike_pacer.max_switch_wall_raster_L)
+    dispatcher_max.map("/WALL_RASTER_R", spike_pacer.max_switch_wall_raster_R)
+    dispatcher_max.map("/WALL_RASTER_T", spike_pacer.max_switch_wall_raster_T)
+    dispatcher_max.map("/WALL_RASTER_B", spike_pacer.max_switch_wall_raster_B)
+    dispatcher_max.map("/WALL_TRUE_LATENT", spike_pacer.max_switch_wall_true_latent)
+    dispatcher_max.map(
+        "/WALL_INFERRED_LATENT", spike_pacer.max_switch_wall_inferred_latent
+    )
+    dispatcher_max.map("/WALL_SPIKE", spike_pacer.max_switch_wall_spike)
 
     server_spike = AsyncIOOSCUDPServer(
-        ("0.0.0.0", SPIKE_PORT), dispatcher_python, asyncio.get_event_loop()
+        (SERVER_IP, SPIKE_PORT), dispatcher_python, asyncio.get_event_loop()
     )
     server_latent = AsyncIOOSCUDPServer(
         (SERVER_IP, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
@@ -940,4 +973,9 @@ def start_post_recording():
 
 # Start the PyQtGraph event loop
 if __name__ == "__main__":
-    start_post_recording()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    asyncio_thread = threading.Thread(target=asyncio_run)
+    asyncio_thread.start()
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
+        QApplication.instance().exec_()

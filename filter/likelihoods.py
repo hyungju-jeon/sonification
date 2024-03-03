@@ -43,3 +43,28 @@ class PoissonLikelihood(nn.Module):
         return log_p_y.sum(dim=-1)
 
 
+class LinearPolarToCartesian(nn.Module):
+    def __init__(self, dim_in, dim_out, n_pairs, device='cpu'):
+        super(LinearPolarToCartesian).__init__()
+
+        self.device = device
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.n_pairs = n_pairs
+
+        self.linear = nn.Linear(dim_in, dim_out, bias=False, device=device)
+
+    def forward(self, z_polar):
+        z_cart = torch.zeros_like(z_polar)
+
+        for i in range(self.n_pairs):
+            z_cart[:, :, 2*i] = None
+            z_cart[:, :, 2*i + 1] = None
+
+        out = self.linear(z_cart)
+        return out
+
+
+
+
+

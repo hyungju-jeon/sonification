@@ -372,7 +372,18 @@ def plot_2d(latents_pca, fs=(10,10), dpi=400, folder='plots'):
             ax.plot(latents_pca[trial_i,:,2], latents_pca[trial_i,:,3], color=cmap(norm(sequence_GrafV1_op1[0][trial_i])))
     plt.savefig(folder+'/090_latents_pc34.pdf', bbox_inches="tight")
     
-    
+def plot_3d(latents_pca, fs=(10,10), dpi=400, folder='plots'):
+    norm = mplcolors.Normalize(vmin=-0,vmax=355)
+
+    cmap = plt.get_cmap('hsv')
+    fig = plt.figure(figsize=fs, dpi=dpi)
+    fig.set_size_inches(fs[0], fs[0], True)
+    ax = fig.add_subplot(111, projection='3d', facecolor='black')
+    ax.axis('off')
+    for trial_i in range(latents_pca.shape[0]):
+        if sequence_GrafV1_op1[0][trial_i] == 0. or sequence_GrafV1_op1[0][trial_i] == 90.:
+            ax.plot(latents_pca[trial_i,:,0], latents_pca[trial_i,:,1], latents_pca[trial_i,:,2], color=cmap(norm(sequence_GrafV1_op1[0][trial_i])))
+    plt.savefig(folder+'/090_latents_pc_3d.pdf', bbox_inches="tight") 
     
 def pca_transform(X, number_of_pcs):
     X_standardized = (X - np.mean(X, axis=0))
@@ -420,17 +431,17 @@ if __name__ == '__main__':
     
     sequence_GrafV1_op1 = np.loadtxt("sequence_GrafV1_op1.csv", delimiter=',')
     
-    # plot_2d(latents_pca)
+    plot_3d(latents_pca)
 
-    for seq_i, seq in enumerate(sequence_GrafV1_op1[0]):
-        print(seq_i)
-        # if seq_i>17:
-        #     make_gabor_video(orientations=[seq], T=256, spatial_frequency=9/2, drift_frequency=6.25, 
-        #                          size=1280, fs=(10,10), dpi=100, seq_i=seq_i)
+    # for seq_i, seq in enumerate(sequence_GrafV1_op1[0]):
+    #     print(seq_i)
+    #     # if seq_i>17:
+    #     #     make_gabor_video(orientations=[seq], T=256, spatial_frequency=9/2, drift_frequency=6.25, 
+    #     #                          size=1280, fs=(10,10), dpi=100, seq_i=seq_i)
         
-        # make_trajectory_video_pyrecorder(latents_pca[seq_i], lims=lims, seq_i=seq_i, shift=20)
-        azim=20 #seq_i*128
-        make_trajectory_video(latents_pca[seq_i], lims=lims, seq_i=seq_i, shift=20,
-                              elev=0, azim=azim, roll=0)
+    #     # make_trajectory_video_pyrecorder(latents_pca[seq_i], lims=lims, seq_i=seq_i, shift=20)
+    #     azim=20 #seq_i*128
+    #     make_trajectory_video(latents_pca[seq_i], lims=lims, seq_i=seq_i, shift=20,
+    #                           elev=0, azim=azim, roll=0)
 
         

@@ -88,6 +88,9 @@ class LatentDynamics:
     def get_state(self):
         return self.coupled_cycle.get_state()
 
+    def get_phase_diff(self):
+        return self.coupled_cycle.get_phase_diff()
+
     async def setup_server(self):
         # python-osc method for establishing the UDP communication with max
         # Connect server if address not in use (check with try catch)
@@ -142,16 +145,6 @@ class SpikeGenerator:
             self.y = np.random.poisson(self.firing_rates)
             spike[0] = self.y
             await busy_timer(self.dt * 1e9)
-
-
-class LatentInference:
-    def __init__(self):
-        pass
-
-    def start(self):
-        while True:
-            print(SPIKES_FAST[0].T)
-            # await busy_timer(ms_to_ns(10))
 
 
 if __name__ == "__main__":

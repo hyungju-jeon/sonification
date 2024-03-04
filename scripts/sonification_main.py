@@ -1,18 +1,14 @@
 # %%
 import asyncio
-from re import L
-import sys
+import random
+
+import numpy as np
 import sonification_latent_module as LatentModule
-from multiprocessing import Process, process
-from sonification_latent_module import SPIKES_FAST, SPIKES_SLOW
 from sonification_communication_module import *
+from sonification_latent_module import SPIKES_FAST, SPIKES_SLOW
 
 from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
-
-import numpy as np
-import random
-
 
 # ---------------------------------------------------------------- #
 # Common Parameters
@@ -78,7 +74,10 @@ async def init_main():
         slow_latent_block.start(),
         fast_spike_block.start(SPIKES_FAST),
         slow_spike_block.start(SPIKES_SLOW),
-        trajectory_sending_loop(
+        true_latent_sending_loop(
+            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=True
+        ),
+        phase_diff_sending_loop(
             ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=True
         ),
         spike_sending_loop(

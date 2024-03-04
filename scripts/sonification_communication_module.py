@@ -13,12 +13,13 @@ LOCAL_SERVER = "127.0.0.1"
 MAX_SERVER = "192.168.0.3"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
-SPIKE_PORT = 1112
-SPIKE_PORT_2 = 1113
+SPIKE_VISUALIZE_PORT = 1112
+SPIKE_INFERENCE_PORT = 1113
 TRUE_LATENT_PORT = 1114
 INFERRED_LATENT_PORT = 1114
 MAX_INPUT_PORT = 1211
-MAX_CONTROL_PORT = 1212
+MAX_CONTROL_PORT = 1211
+MAX_OUTPUT_PORT = 1212
 TIMER_DELAY = 1
 
 DISPATCHER = Dispatcher()
@@ -44,7 +45,7 @@ async def busy_timer(duration):
             break
 
 
-async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
+async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
     """
     Sends packets of data to Max/MSP at regular intervals.
 
@@ -55,11 +56,18 @@ async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         None
     """
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
-    OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
+    MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+    LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
-        OSCsender.send_message(
-            "/trajectory",
+        MAX_OSCsender.send_message(
+            "/TRAJECTORY",
+            np.concatenate(
+                [fask_block.get_state(), slow_block.get_state()], axis=0
+            ).tolist(),
+        )
+        LOCAL_OSCsender.send_message(
+            "/TRAJECTORY",
             np.concatenate(
                 [fask_block.get_state(), slow_block.get_state()], axis=0
             ).tolist(),
@@ -69,7 +77,34 @@ async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=F
 
         if sleep_duration == 0 and verbose:
             print(
-                f"Trajectory Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
+                f"True Trajectory Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
+            )
+        await busy_timer(interval_ns)
+
+
+async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
+    """
+    Sends packets of data to Max/MSP at regular intervals.
+
+    Args:
+        interval (float): The interval between each packet sending.
+
+    Returns:
+        None
+    """
+    # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
+    MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+    while True:
+        start_t = time.perf_counter_ns()
+        MAX_OSCsender.send_message(
+            "/PHASE_DIFF", [fask_block.get_phase_diff(), slow_block.get_phase_diff()]
+        )
+        elapsed_time = time.perf_counter_ns() - start_t
+        sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
+
+        if sleep_duration == 0 and verbose:
+            print(
+                f"Phase Diff Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
             )
         await busy_timer(interval_ns)
 
@@ -84,8 +119,9 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
     Returns:
         None
     """
-    OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_PORT)
-    OSCsender_2 = SimpleUDPClient(LOCAL_SERVER, SPIKE_PORT_2)
+    MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+    local_inference_OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_INFERENCE_PORT)
+    local_visualize_OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_VISUALIZE_PORT)
     while True:
         start_t = time.perf_counter_ns()
         msg = np.stack(
@@ -95,11 +131,15 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
             ],
             axis=0,
         ).tolist()
-        OSCsender.send_message(
+        MAX_OSCsender.send_message(
             "/SPIKES",
             msg,
         )
-        OSCsender_2.send_message(
+        local_inference_OSCsender.send_message(
+            "/SPIKES",
+            msg,
+        )
+        local_visualize_OSCsender.send_message(
             "/SPIKES",
             msg,
         )

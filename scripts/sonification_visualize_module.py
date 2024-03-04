@@ -401,7 +401,7 @@ class SpikeBall3DVisualizer:
             index (int): The index of the spike to trigger.
         """
         if WALL_SPIKE[0] == 1:
-            self.size[index] += DISC_RADIUS_INC[0]
+            self.size[index] += DISC_RADIUS_INC[0] * 1.0
         else:
             self.size[index] = 0
         self.color[index, -1] = 0.9
@@ -936,7 +936,7 @@ spike_pacer = SpikePacer(
 async def init_main():
     dispatcher_python = Dispatcher()
     dispatcher_python.map("/SPIKES", spike_pacer.spike_osc_handler)
-    dispatcher_python.map("/trajectory", spike_pacer.latent_osc_handler)
+    dispatcher_python.map("/TRAJECTORY", spike_pacer.latent_osc_handler)
 
     dispatcher_max = Dispatcher()
     dispatcher_max.map("/DISC_RADIUS_INC", spike_pacer.max_control_osc_handler)
@@ -952,13 +952,15 @@ async def init_main():
     dispatcher_max.map("/WALL_SPIKE", spike_pacer.max_switch_wall_spike)
 
     server_spike = AsyncIOOSCUDPServer(
-        (LOCAL_SERVER, SPIKE_PORT), dispatcher_python, asyncio.get_event_loop()
+        (LOCAL_SERVER, SPIKE_VISUALIZE_PORT),
+        dispatcher_python,
+        asyncio.get_event_loop(),
     )
     server_latent = AsyncIOOSCUDPServer(
         (LOCAL_SERVER, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
     )
     server_max = AsyncIOOSCUDPServer(
-        ("0.0.0.0", MAX_CONTROL_PORT), dispatcher_max, asyncio.get_event_loop()
+        (LOCAL_SERVER, MAX_CONTROL_PORT), dispatcher_max, asyncio.get_event_loop()
     )
     transport, protocol = await server_spike.create_serve_endpoint()
     transport, protocol = await server_latent.create_serve_endpoint()

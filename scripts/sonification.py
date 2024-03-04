@@ -7,7 +7,7 @@ subprocesses = dict()
 
 
 def worker(file):
-    subprocesses[file] = subprocess.Popen(["python", file])
+    subprocesses[file] = subprocess.Popen(["python", file, "0"])
 
 
 if __name__ == "__main__":

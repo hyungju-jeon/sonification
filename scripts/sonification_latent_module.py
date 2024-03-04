@@ -22,6 +22,8 @@ PHASE_DIFF_FAST = [0]
 LATENT_SLOW = [np.zeros((200, 2))]
 SPIKES_SLOW = [np.zeros((50, 1))]
 PHASE_DIFF_SLOW = [0]
+INPUT_X = [0]
+INPUT_Y = [0]
 
 # Common Parameters
 dt = 1e-3  # 1ms for dynamic system update
@@ -46,10 +48,6 @@ def ms_to_ns(ms):
 
 
 class LatentDynamics:
-    INPUT_MAX = 0
-    INPUT_X = 0
-    INPUT_Y = 0
-
     def __init__(self, cycle_info, verbose=False):
         self.dt = cycle_info["dt"]
         self.reference_cycle = limit_circle(**cycle_info)
@@ -68,7 +66,9 @@ class LatentDynamics:
         await self.setup_server()
         while True:
             start_t = time.perf_counter_ns()
-            u = np.stack([self.INPUT_X, self.INPUT_Y], axis=0) / 10
+            u = np.stack([INPUT_X[0], INPUT_Y[0]], axis=0)
+            u[np.abs(u) < 0.05] = 0
+            u = u * 1e-2
             # u = self.INPUT_X
 
             self.coupled_cycle.update_state(u)
@@ -93,7 +93,7 @@ class LatentDynamics:
         # Connect server if address not in use (check with try catch)
         try:
             server_max = AsyncIOOSCUDPServer(
-                (SERVER_IP, MAX_INPUT_PORT), DISPATCHER, asyncio.get_event_loop()
+                (LOCAL_SERVER, MAX_INPUT_PORT), DISPATCHER, asyncio.get_event_loop()
             )
             transport_max, _ = await server_max.create_serve_endpoint()
         except:
@@ -101,7 +101,7 @@ class LatentDynamics:
 
         try:
             server_motion = AsyncIOOSCUDPServer(
-                (SERVER_IP, MOTION_ENERGY_PORT), DISPATCHER, asyncio.get_event_loop()
+                (LOCAL_SERVER, MOTION_ENERGY_PORT), DISPATCHER, asyncio.get_event_loop()
             )
             transport_motion, _ = await server_motion.create_serve_endpoint()
         except:
@@ -115,8 +115,8 @@ class LatentDynamics:
             print(f"Received update for INPUT_MAX : {args}")
 
     def camera_to_latent_osc_handler(self, address, *args):
-        INPUT_X = args[0]
-        INPUT_Y = args[1]
+        INPUT_X[0] = args[0]
+        INPUT_Y[0] = args[1]
         if self.verbose:
             print(f"Received update for INPUT_X, INPUT_Y : {args}")
 

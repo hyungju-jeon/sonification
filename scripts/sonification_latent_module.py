@@ -64,10 +64,7 @@ class LatentDynamics:
         while True:
             start_t = time.perf_counter_ns()
             u = np.stack([INPUT_X[0], INPUT_Y[0]], axis=0)
-            u[np.abs(u) < 0.05] = 0
-            u = u * 1e-2
             # u = self.INPUT_X
-
             self.coupled_cycle.update_state(u)
             self.latent = self.get_state()
             # print()

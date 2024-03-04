@@ -19,7 +19,7 @@ TARGET_SNR = 0
 CYCLE_FAST = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 1.2,
+    "w": 2 * np.pi * 1.5,
     "Q": None,
     "dt": dt,
 }

@@ -4,12 +4,13 @@ import time
 import asyncio
 import sys
 from pythonosc.udp_client import SimpleUDPClient
+from scripts.check_UDP_latency import elapsed_time_update
 from sonification_communication_module import *
 
 # ---------------------------------------------------------------- #
 # Video capture related parameters
-FRAME_WIDTH = 40
-FRAME_HEIGHT = 30
+FRAME_WIDTH = 120
+FRAME_HEIGHT = 90
 
 
 class MotionEnergy:
@@ -33,7 +34,7 @@ class MotionEnergy:
 
     async def start(self):
         while True:
-            start_time = time.perf_counter_ns()
+            start_t = time.perf_counter_ns()
             # Read current frame
             ret, curr_frame = self.FRAME.read()
             if not ret:
@@ -56,14 +57,19 @@ class MotionEnergy:
             motion_energy_x = np.mean(flow_x)
             motion_energy_y = np.mean(flow_y)
 
+            motion_energy_x = (
+                np.clip(motion_energy_x * 2 * np.pi, -np.pi, np.pi) * 0.001
+            )
+            motion_energy_y = np.clip(motion_energy_y, -1, 1) * 0.01
+
             if self.verbose:
                 print(
                     f"Motion Energy X: {motion_energy_x}, Motion Energy Y: {motion_energy_y} took {(time.perf_counter_ns() - start_time)/1e6} ms"
                 )
-            self.display_text(curr_frame, motion_energy_x, motion_energy_y)
 
             # Display current frame
             # cv2.imshow("Motion Analysis", curr_frame)
+            # self.display_text(curr_frame, motion_energy_x, motion_energy_y)
 
             # Update previous frame and grayscale image
             self.prev_gray = curr_gray.copy()
@@ -74,7 +80,15 @@ class MotionEnergy:
                 self.FRAME.release()
                 cv2.destroyAllWindows()
                 break
-            await asyncio.sleep(0)
+
+            elapsed_time = time.perf_counter_ns() - start_t
+            sleep_duration = np.fmax(5e-2 * 1e9 - (time.perf_counter_ns() - start_t), 0)
+
+            if sleep_duration == 0 & self.verbose:
+                print(
+                    f"Input iteration took {elapsed_time/1e6}ms which is longer than {5e-2*1e3} ms"
+                )
+            await busy_timer(sleep_duration)
 
         # Release video capture and close windows
 

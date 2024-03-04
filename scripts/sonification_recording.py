@@ -1,4 +1,5 @@
 # %%
+import time
 import os
 import random
 import subprocess
@@ -20,10 +21,10 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
     QWidget,
+    QGridLayout,
+    QGroupBox,
 )
 from pyqtgraph.Qt import QtCore, QtGui
-
-pg.setConfigOptions(useOpenGL=True)
 
 
 # %%
@@ -92,7 +93,7 @@ target_location = generate_target_location(smooth_tuning_curve)
 packet_count = 0
 SPIKES = [np.zeros(num_neurons)]
 DISC_RADIUS_INC = [10]
-DECAY_FACTOR = [0.9]
+DECAY_FACTOR = [0.1]
 SEQUENCE_TRIGGER = [0]
 LATENT = [np.zeros(8)]
 
@@ -248,7 +249,7 @@ class SpikeRaster2DVisualizer:
         self.plot_widget.setBackground((40, 40, 40, 255))
         self.plot_widget.setXRange(0, 1000)
         self.plot_widget.setYRange(0, num_neurons)
-        self.plot_widget.setGeometry(0, 110, 1920, 1200)
+        self.plot_widget.setGeometry(0, 0, 1920, 500)
         # remove axis
         self.plot_widget.hideAxis("bottom")
         self.plot_widget.hideAxis("left")
@@ -318,7 +319,7 @@ class SpikeRaster2DVisualizer:
         exporter = pg.exporters.ImageExporter(self.plot_widget.scene())
         # exporter.parameters()["width"] = 1048
         exporter.export(
-            "/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/vertical_raster/frame"
+            "/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/h_raster/frame"
             + f"{self.count:06}"
             + ".png"
         )
@@ -331,29 +332,34 @@ class SpikeRaster2DVerticalVisualizer:
         self.app = QApplication([])
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setBackground((40, 40, 40, 255))
-        self.plot_widget.setXRange(0, num_neurons)
         self.plot_widget.setYRange(0, 1000)
-        self.plot_widget.setGeometry(0, 110, 1920, 1200)
+        self.plot_widget.setXRange(0, num_neurons)
+        self.plot_widget.setGeometry(0, 0, 1920, 500)
         # remove axis
         self.plot_widget.hideAxis("bottom")
         self.plot_widget.hideAxis("left")
         self.plot_widget.show()
-        self.plot_widget.setViewportUpdateMode(QGraphicsView.BoundingRectViewportUpdate)
+        # self.plot_widget.setViewportUpdateMode(QGraphicsView.BoundingRectViewportUpdate)
 
         self.L = 1000
         self.buffer = 1000
         self.firing_rates = np.zeros(
-            (num_neurons, self.L + self.buffer)
+            (self.L + self.buffer, num_neurons)
         )  # Initialize firing rates for each neuron
-        self.decay_factor = DECAY_FACTOR[0]
-        # self.decay_factor = 0
+        # self.decay_factor = DECAY_FACTOR[0]
+        self.decay_factor = 0.5
         self.num_neurons = num_neurons
 
         self.img = pg.ImageItem()
-        self.img.setLevels((0, 20))
+        self.img.setLevels((0, 5))
         scale_factor = [1920 / self.L, 1200 / self.num_neurons]
         self.count = 0
         self.plot_widget.addItem(self.img)
+
+        tr = QtGui.QTransform()  # prepare ImageItem transformation:
+        tr.rotate(90)  # rotate 90 degrees
+
+        # assign transform
 
         # Create a custom lookup table (LUT) with green-neon color
         self.lut = []
@@ -371,28 +377,25 @@ class SpikeRaster2DVerticalVisualizer:
     def update(self):
         self.count += 1
         if self.frame >= self.L + self.buffer:
-            self.firing_rates = np.roll(self.firing_rates, -self.buffer, axis=1)
+            self.firing_rates = np.roll(self.firing_rates, -self.buffer, axis=0)
             self.frame = self.L
         if self.frame > 0:
-            self.firing_rates[:, self.frame] = (
-                self.firing_rates[:, self.frame - 1] * self.decay_factor
+            self.firing_rates[self.frame, :] = (
+                self.firing_rates[self.frame - 1, :] * self.decay_factor
             )
         for i, firing_event in enumerate(SPIKES[0]):
             if firing_event > 0:  # If there's firing
-                self.firing_rates[i, self.frame] += 5  # Instantly increase firing rate
+                self.firing_rates[self.frame, i] += 5  # Instantly increase firing rate
 
         if (self.count < 1000) & (self.count % 10 == 0):
-            rolled_rate = self.firing_rates[
-                :,
-                0:1000,
-            ]
-            rolled_rate = np.roll(rolled_rate, 1000 - self.count, axis=1)
-            self.img.setImage(rolled_rate, autoLevels=False)
+            rolled_rate = self.firing_rates[0:1000, :]
+            rolled_rate = np.roll(rolled_rate, 1000 - self.count, axis=0)
+            self.img.setImage(rolled_rate.T, autoLevels=False)
             self.save_frame()
 
         if (self.count >= 1000) & (self.count % 10 == 0):
             self.img.setImage(
-                self.firing_rates[:, np.fmax(0, self.frame - self.L) : self.frame],
+                self.firing_rates[np.fmax(0, self.frame - self.L) : self.frame, :].T,
                 autoLevels=False,
             )
             self.save_frame()
@@ -406,7 +409,7 @@ class SpikeRaster2DVerticalVisualizer:
         exporter = pg.exporters.ImageExporter(self.plot_widget.scene())
         # exporter.parameters()["width"] = 1048
         exporter.export(
-            "/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/vertical_raster_trace/frame"
+            "/Users/hyungju/Desktop/hyungju/Project/sonification/results/animation/recording/v_raster/frame"
             + f"{self.count:06}"
             + ".png"
         )
@@ -497,20 +500,6 @@ class LatentOrbitVisualizer:
                 self.traces[i].setData(
                     pos=pts,
                 )
-            # for i in range(6):
-            #     pts = np.vstack(
-            #         [
-            #             self.data[self.x] * 5,
-            #             self.data[self.y] * 5,
-            #             self.data[self.z[i], :] * 3,
-            #         ]
-            #     ).transpose()
-            #     self.traces[i].setData(
-            #         pos=pts,
-            #     )
-            # if self.frame >= self.L + self.buffer:
-            #     self.data = np.roll(self.data, -self.buffer, axis=0)
-            #     self.frame = self.L
             self.save_frame()
             print(f"Frame: {self.count}, Count: {packet_count}")
         self.frame += 1
@@ -524,9 +513,10 @@ class LatentOrbitVisualizer:
 
 
 # %%
-# visualizer_raster = SpikeRaster2DVerticalVisualizer()
+visualizer_vertical_raster = SpikeRaster2DVerticalVisualizer()
+# visualizer_raster = SpikeRaster2DVisualizer()
 # visualizer = SpikeDisc2DVisualizer()
-visualizer_latent = LatentOrbitVisualizer(2, 4)
+# visualizer_latent = LatentOrbitVisualizer(2, 4)
 iter = 0
 smooth_latent = smooth_latent - np.mean(smooth_latent, axis=0)
 for orientation, trial in zip(orientation_sequence, trial_sequence):
@@ -535,15 +525,17 @@ for orientation, trial in zip(orientation_sequence, trial_sequence):
     if iter < 36:
         for i in range(trial_length):
             SPIKES[0] = spike_train[:, i]
+
             # visualizer_raster.update()
-    if iter >= 36:
-        if iter == 40:
-            SEQUENCE_TRIGGER[0] = 1
-        for i in range(trial_length):
-            SPIKES[0] = spike_train[:, i]
-            # visualizer.update()
-    if iter >= 48:
-        for i in range(trial_length):
-            LATENT[0] = current_latent[i, :]
-            visualizer_latent.update()
+            visualizer_vertical_raster.update()
+    # if iter >= 36:
+    #     if iter == 40:
+    #         SEQUENCE_TRIGGER[0] = 1
+    #     for i in range(trial_length):
+    #         SPIKES[0] = spike_train[:, i]
+    #         # visualizer.update()
+    # if iter >= 48:
+    #     for i in range(trial_length):
+    #         LATENT[0] = current_latent[i, :]
+    #         visualizer_latent.update()
     iter += 1

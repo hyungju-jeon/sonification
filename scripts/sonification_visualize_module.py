@@ -32,8 +32,9 @@ LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.1]
 
 WALL_SPIKE = [1]
-WALL_TRUE_LATENT = [1]
-WALL_INFERRED_LATENT = [1]
+WALL_TRUE_LATENT = [0]
+WALL_INFERRED_LATENT = [0]
+
 CEILING_RASTER = [0]
 CEILING_TRUE_LATENT = [0]
 CEILING_INFERRED_LATENT = [0]
@@ -44,7 +45,7 @@ COLOR_INDEX = [0]
 TRUE_LATENT_COLOR = [51, 255, 51, 255]
 INFERRED_LATENT_COLOR = [255, 176, 0, 255]
 
-SCALE_FACTOR = GRID_SIZE_HEIGHT / 8
+SCALE_FACTOR = GRID_SIZE_HEIGHT / 4
 pg.setConfigOptions(useOpenGL=True)
 
 
@@ -744,7 +745,7 @@ class LatentOrbitVisualizer:
         self.data = np.zeros((8, self.L + self.buffer))
 
         self.z = [x for x in range(8) if x not in [self.x]]
-        for i in range(6):
+        for i in range(7):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
                 color=self.color,
@@ -756,6 +757,7 @@ class LatentOrbitVisualizer:
         self.frame = 0
         self.prev_count = 0
         self.count = 0
+        self.bias = 0
         self.visible = visible
 
     def animation(self):
@@ -774,9 +776,10 @@ class LatentOrbitVisualizer:
             for i in range(0, 6):
                 pts = np.vstack(
                     [
-                        self.data[self.x, slice_window] * SCALE_FACTOR,
-                        self.data[self.z[i], slice_window] * SCALE_FACTOR,
-                        self.data[self.z[i + 1], slice_window] * SCALE_FACTOR,
+                        np.ones_like(self.data[0, slice_window])
+                        * (-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2),
+                        self.data[i, slice_window] * SCALE_FACTOR + self.bias,
+                        self.data[i + 1, slice_window] * SCALE_FACTOR,
                     ]
                 ).transpose()
                 self.traces[i].setData(
@@ -897,10 +900,6 @@ class SpikePacer(QtCore.QObject):
 
     def spike_osc_handler(self, address, *args):
         global SPIKES, packet_count
-
-        # SPIKES[0][:50] = np.array(args[0])
-        # SPIKES[0][50:] = np.array(args[1])
-        stime = time.perf_counter_ns()
         SPIKES[0] = np.array(args)
         SPIKES[0] = SPIKES[0][raster_sort_idx]
         packet_count += 1
@@ -937,11 +936,21 @@ class SpikePacer(QtCore.QObject):
         vis_wall_true_latent.visible = args[0]
         for trace in vis_wall_true_latent.traces.items():
             trace[1].setVisible(args[0])
+        if args[0]:
+            vis_wall_inferred_latent.bias = GRID_SIZE_HEIGHT / 2
+        else:
+            vis_wall_inferred_latent.bias = 0
 
     def max_switch_wall_inferred_latent(self, address, *args):
-        vis_wall_true_latent.visible = args[0]
-        for trace in vis_wall_true_latent.traces.items():
+        vis_wall_inferred_latent.visible = args[0]
+        for trace in vis_wall_inferred_latent.traces.items():
             trace[1].setVisible(args[0])
+        if args[0]:
+            vis_wall_true_latent.bias = -GRID_SIZE_HEIGHT / 2
+            # vis_wall_inferred_latent.bias += GRID_SIZE_HEIGHT / 2
+        else:
+            vis_wall_true_latent.bias = 0
+            # vis_wall_inferred_latent.bias -= GRID_SIZE_HEIGHT / 2
 
     def max_control_osc_handler(self, address, *args):
         exec("global " + address[1:])

@@ -8,7 +8,7 @@ import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
 from pyqtgraph.Qt import QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QGraphicsView, QDesktopWidget
+from PyQt5.QtWidgets import QApplication, QGraphicsView, QDesktopWidget, QGridLayout
 from PyQt5.QtCore import QTimerEvent, QTimer
 from PyQt5.QtCore import pyqtSignal
 
@@ -23,21 +23,21 @@ num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
 LATENT = [np.zeros(8)]
 
-GRID_SIZE_WIDTH = 50
-GRID_SIZE_HEIGHT = 30
+GRID_SIZE_WIDTH = 100
+GRID_SIZE_HEIGHT = 25
 
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.99]
 LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.1]
 
-WALL_SPIKE = [1]
-WALL_TRUE_LATENT = [1]
-WALL_INFERRED_LATENT = [1]
-CEILING_RASTER = [1]
-CEILING_TRUE_LATENT = [1]
-CEILING_INFERRED_LATENT = [1]
-CEILING_SPIKE = [1]
+WALL_SPIKE = [0]
+WALL_TRUE_LATENT = [0]
+WALL_INFERRED_LATENT = [0]
+CEILING_RASTER = [0]
+CEILING_TRUE_LATENT = [0]
+CEILING_INFERRED_LATENT = [0]
+CEILING_SPIKE = [0]
 SPIKE_ORGANIZATION = [1]
 
 COLOR_INDEX = [0]
@@ -805,11 +805,22 @@ target_location[raster_sort_idx >= 50, 1] -= 7
 
 app = QApplication([])
 # -----------------------------Visualization on the wall-----------------------------
+parent_widget = gl.GLViewWidget()
+parent_widget.setGeometry(0, 0, 1920, 1200)
+layout = QGridLayout()
+parent_widget.setLayout(layout)
+monitor = QDesktopWidget().screenGeometry(1)
+parent_widget.move(monitor.left(), monitor.top())
+parent_widget.showFullScreen()
+
+empty_widget = gl.GLViewWidget()
+empty_widget.setGeometry(0, 0, 1920, 700)
+
 wall_plot_widget = gl.GLViewWidget()
-wall_plot_widget.setGeometry(0, 0, 1920, 1200)
-wall_plot_widget.opts["center"] = QtGui.QVector3D(-GRID_SIZE_WIDTH / 2, 0, 0)
+wall_plot_widget.setGeometry(0, 0, 1920, 500)
+wall_plot_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
 wall_plot_widget.opts["distance"] = 50
-wall_plot_widget.opts["fov"] = 100
+wall_plot_widget.opts["fov"] = 90
 wall_plot_widget.opts["elevation"] = 0
 wall_plot_widget.opts["azimuth"] = 0
 
@@ -828,10 +839,10 @@ g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_right.rotate(-90, 1, 0, 0)
 g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)
 wall_plot_widget.addItem(g_right)
-monitor = QDesktopWidget().screenGeometry(1)
-wall_plot_widget.move(monitor.left(), monitor.top())
-wall_plot_widget.showFullScreen()
 
+layout.addWidget(empty_widget, 0, 0)
+layout.addWidget(wall_plot_widget, 1, 0)
+parent_widget.show()
 
 vis_wall_raster_left = RasterWithTrace3DVisualizer(
     orientation="left", visible=1, widget=wall_plot_widget

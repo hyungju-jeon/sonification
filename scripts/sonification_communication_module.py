@@ -9,7 +9,8 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 # ----------------------- OSC Related Stuff ---------------------- #
 # OSC ips / ports
 global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, SPIKE_PORT_2, TRUE_LATENT_PORT, INFERRED_LATENT_PORT, DISPATCHER, TIMER_DELAY
-SERVER_IP = "127.0.0.1"
+LOCAL_SERVER = "127.0.0.1"
+MAX_SERVER = "192.168.0.3"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
 SPIKE_PORT = 1112
@@ -54,7 +55,7 @@ async def trajectory_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         None
     """
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
-    OSCsender = SimpleUDPClient(SERVER_IP, TRUE_LATENT_PORT)
+    OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
         OSCsender.send_message(
@@ -83,8 +84,8 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
     Returns:
         None
     """
-    OSCsender = SimpleUDPClient(SERVER_IP, SPIKE_PORT)
-    OSCsender_2 = SimpleUDPClient(SERVER_IP, SPIKE_PORT_2)
+    OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_PORT)
+    OSCsender_2 = SimpleUDPClient(LOCAL_SERVER, SPIKE_PORT_2)
     while True:
         start_t = time.perf_counter_ns()
         msg = np.stack(

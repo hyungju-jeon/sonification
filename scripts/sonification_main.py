@@ -23,15 +23,15 @@ TARGET_SNR = 0
 CYCLE_FAST = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 2,
-    "Q": np.array([[1e-3, 0.0], [0.0, 1e-3]]),
+    "w": 2 * np.pi * 0.5,
+    "Q": None,
     "dt": dt,
 }
 CYCLE_SLOW = {
-    "x0": np.array([1, 1]),
+    "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 1,
-    "Q": np.array([[1e-3, 0.0], [0.0, 1e-3]]),
+    "w": 2 * np.pi * 0.5,
+    "Q": None,
     "dt": dt,
 }
 
@@ -62,9 +62,6 @@ async def init_main():
     C_fast, b_fast = param["C"], param["b"]
     param = np.load(loading_matrix_slow_name, allow_pickle=True)
     C_slow, b_slow = param["C"], param["b"]
-
-    C = np.vstack([C_fast, C_slow])
-    b = np.vstack([b_fast, b_slow])
 
     fast_latent_block = LatentModule.LatentDynamics(CYCLE_FAST, verbose=False)
     slow_latent_block = LatentModule.LatentDynamics(CYCLE_SLOW, verbose=False)

@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import time
 import asyncio
+import sys
 from pythonosc.udp_client import SimpleUDPClient
 from sonification_communication_module import *
 
@@ -28,7 +29,7 @@ class MotionEnergy:
             exit()
         self.prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         self.verbose = verbose
-        self.OSCsender = SimpleUDPClient(SERVER_IP, MOTION_ENERGY_PORT)
+        self.OSCsender = SimpleUDPClient(LOCAL_SERVER, MOTION_ENERGY_PORT)
 
     async def start(self):
         while True:
@@ -62,7 +63,7 @@ class MotionEnergy:
             self.display_text(curr_frame, motion_energy_x, motion_energy_y)
 
             # Display current frame
-            cv2.imshow("Motion Analysis", curr_frame)
+            # cv2.imshow("Motion Analysis", curr_frame)
 
             # Update previous frame and grayscale image
             self.prev_gray = curr_gray.copy()
@@ -110,7 +111,7 @@ class MotionEnergy:
 
 
 if __name__ == "__main__":
-    motion_energy = MotionEnergy(True)
+    motion_energy = MotionEnergy(verbose=int(sys.argv[1]))
     asyncio.run(motion_energy.start())
     print("Motion Energy Analysis Complete")
     print("Exiting...")

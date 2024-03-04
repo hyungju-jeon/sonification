@@ -66,7 +66,9 @@ class LatentInference:
         # Connect server if address not in use (check with try catch)
         try:
             server_motion = AsyncIOOSCUDPServer(
-                (SERVER_IP, SPIKE_PORT_2), DISPATCHER, asyncio.get_event_loop()
+                (LOCAL_SERVER, SPIKE_INFERENCE_PORT),
+                DISPATCHER,
+                asyncio.get_event_loop(),
             )
             transport_motion, _ = await server_motion.create_serve_endpoint()
         except:

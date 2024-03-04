@@ -89,7 +89,7 @@ class LatentDynamics:
         return self.coupled_cycle.get_state()
 
     def get_phase_diff(self):
-        return self.coupled_cycle.get_phase_diff()
+        return self.coupled_cycle.get_state()
 
     async def setup_server(self):
         # python-osc method for establishing the UDP communication with max

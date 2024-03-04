@@ -97,7 +97,8 @@ async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=F
     while True:
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
-            "/PHASE_DIFF", [fask_block.get_phase_diff(), slow_block.get_phase_diff()]
+            "/PHASE_DIFF",
+            np.concatenate([fask_block.get_phase_diff(), slow_block.get_phase_diff()]),
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)

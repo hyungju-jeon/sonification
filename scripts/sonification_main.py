@@ -19,7 +19,7 @@ TARGET_SNR = 0
 CYCLE_FAST = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 0.5,
+    "w": 2 * np.pi * 1.2,
     "Q": None,
     "dt": dt,
 }
@@ -75,13 +75,13 @@ async def init_main():
         fast_spike_block.start(SPIKES_FAST),
         slow_spike_block.start(SPIKES_SLOW),
         true_latent_sending_loop(
-            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=True
+            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
         ),
         phase_diff_sending_loop(
-            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=True
+            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
         ),
         spike_sending_loop(
-            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=True
+            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=False
         ),
     )
 

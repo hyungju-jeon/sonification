@@ -19,7 +19,11 @@ from filter.dynamics import (
     DenseGaussianNonlinearDynamics,
 )
 from filter.encoders import BackwardEncoderLRMvn, LocalEncoderLRMvn
-from filter.likelihoods import GaussianLikelihood, PoissonLikelihood,LinearPolarToCartesian
+from filter.likelihoods import (
+    GaussianLikelihood,
+    PoissonLikelihood,
+    LinearPolarToCartesian,
+)
 from filter.nonlinear_smoother import (
     FullRankNonlinearStateSpaceModelFilter,
     NonlinearFilter,
@@ -51,12 +55,13 @@ def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     reference_cycle = limit_circle(**cycle_info)
     perturb_cycle = limit_circle(**cycle_info)
     two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    latent_trajectory = two_cycle.generate_trajectory(2000)
+    latent_trajectory = two_cycle.generate_trajectory(2000) * 1e-3
+    target_rate = 10
 
     theta = np.random.uniform(0, 2 * np.pi, num_neurons)
     r = scale + np.random.randn(num_neurons) * noise
     C_r = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = 15 + np.random.randn(num_neurons) * 5
+    target_firing_rate = target_rate + np.random.randn(num_neurons) * 5
     target_firing_rate *= 1e-3
     b = 1.0 * np.random.rand(1, num_neurons)
     firing_rates = computeFiringRate(latent_trajectory[:, :2], C_r, b)
@@ -67,7 +72,7 @@ def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     theta = np.random.uniform(0, 2 * np.pi, num_neurons)
     r = scale + np.random.randn(num_neurons) * noise
     C_p = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = 15 + np.random.randn(num_neurons) * 5
+    target_firing_rate = target_rate + np.random.randn(num_neurons) * 5
     target_firing_rate *= 1e-3
     b = 1.0 * np.random.rand(1, num_neurons)
     firing_rates = computeFiringRate(latent_trajectory[:, :2], C_p, b)
@@ -82,19 +87,19 @@ def initialize_loading_matrix():
     loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
     loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
 
-    if not os.path.exists(loading_matrix_fast_name) or not os.path.exists(
-        loading_matrix_slow_name
-    ):
-        C_fast, b_fast = generate_loading_matrix(
-            num_neurons, CYCLE_FAST, scale=1, noise=0.3
-        )
+    # if not os.path.exists(loading_matrix_fast_name) or not os.path.exists(
+    #     loading_matrix_slow_name
+    # ):
+    C_fast, b_fast = generate_loading_matrix(
+        num_neurons, CYCLE_FAST, scale=3, noise=0.3
+    )
 
-        np.savez(loading_matrix_fast_name, C=C_fast, b=b_fast)
+    np.savez(loading_matrix_fast_name, C=C_fast, b=b_fast)
 
-        C_slow, b_slow = generate_loading_matrix(
-            num_neurons, CYCLE_SLOW, scale=1, noise=0.3
-        )
-        np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
+    C_slow, b_slow = generate_loading_matrix(
+        num_neurons, CYCLE_SLOW, scale=3, noise=0.3
+    )
+    np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
 
 
 def generate_trajectory():
@@ -142,13 +147,13 @@ def train_network():
     A = torch.nn.Linear(n_latents, n_latents, bias=False, device=device).requires_grad_(
         False
     )
-    A.weight.data = 
+    A.weight.data = 0  # TODO update this line
     B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
         False
     )
-    B.weight.data = 
+    B.weight.data = 0  # TODO update this line
     C = torch.nn.Linear(n_latents, n_neurons, device=device).requires_grad_(False)
-    C.weight.data = 
+    C.weight.data = 0  # TODO update this line
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False)
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False)
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
@@ -183,13 +188,13 @@ def train_network():
 
     """likelihood pdf"""
     C = LinearPolarToCartesian(n_latents, n_neurons, 4, device=device)
-    C.linear.weight.data = None #TODO update this line
+    C.linear.weight.data = None  # TODO update this line
     likelihood_pdf = PoissonLikelihood(C, n_neurons, bin_sz, device=device)
     likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz, device=device)
 
     """dynamics module"""
     # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
-    dynamics_fn = A #TODO Update this line 
+    dynamics_fn = A  # TODO Update this line
     dynamics_mod = DenseGaussianNonlinearDynamics(
         dynamics_fn, n_latents, approximation_pdf, Q_diag, device=device
     )
@@ -265,9 +270,9 @@ def train_network():
 
 
 if __name__ == "__main__":
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
+    random.seed(123)
+    np.random.seed(123)
+    torch.manual_seed(123)
 
     initialize_loading_matrix()
-    train_network()
+    # train_network()

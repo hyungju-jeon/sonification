@@ -26,7 +26,7 @@ LATENT = [np.zeros(8)]
 GRID_SIZE_WIDTH = 50
 GRID_SIZE_HEIGHT = 30
 
-DISC_RADIUS_INC = [20]
+DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.99]
 LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.1]
@@ -157,7 +157,7 @@ class RasterWithTrace3DVisualizer:
             if firing_event > 0:  # If there's firing
                 self.firing_rates[self.frame, i] += 5  # Instantly increase firing rate
 
-        if self.frame % 10 == 0:
+        if self.frame % 10 == 0 and self.visible:
             if self.count >= 1000:
                 raster_texture = pg.makeRGBA(
                     self.firing_rates[np.fmax(0, self.frame - self.L) : self.frame, :],
@@ -320,7 +320,7 @@ class SpikeBubble3DVisualizer:
 
 
 class SpikeBall3DVisualizer:
-    def __init__(self, target_location=None, widget=None):
+    def __init__(self, target_location=None, visible=False, widget=None):
         self.num_neurons = num_neurons
         # Create a PyQtGraph window
         if widget is None:
@@ -362,6 +362,7 @@ class SpikeBall3DVisualizer:
         self.frame = 0
         self.prev_count = 0
         self.count = 0
+        self.visible = visible
 
     def animation(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
@@ -380,7 +381,7 @@ class SpikeBall3DVisualizer:
         self.color = np.repeat(
             np.array([0.2, 1, 0.2, 0.4])[np.newaxis, :], num_neurons, axis=0
         )
-        self.color[raster_sort_idx % 50 > 25] = [1, 0.7, 0.0, 0.4]
+        self.color[raster_sort_idx % 50 > 25] = [0.7, 0.7, 0.7, 0.4]
 
     def update(self):
         if self.frame % 10 == 0:
@@ -405,19 +406,9 @@ class SpikeBall3DVisualizer:
         else:
             self.size[index] = 0
         self.color[index, -1] = 0.9
-        if self.count > 10000:
-            SPIKE_ORGANIZATION[0] = 1
-        if SPIKE_ORGANIZATION[0] == 1:
+        if SPIKE_ORGANIZATION[0]:
             self.velocity = self.centroid_positions - self.target_positions
-            self.centroid_positions[index] -= 0.3 * self.velocity[index]
-
-        # # Add the zapping effect element
-        # zap_effect = gl.GLScatterPlotItem()
-        # zap_effect.setData(
-        #     pos=self.centroid_positions[index], size=20, color=(0.8, 0.8, 0.8, 0.3)
-        # )
-        # self.plot_widget.addItem(zap_effect)
-        # QTimer.singleShot(30, lambda: self.plot_widget.removeItem(zap_effect))
+            self.centroid_positions[index] -= 0.05 * self.velocity[index]
 
         pos = [self.centroid_positions[idx] for idx in index]
 
@@ -430,9 +421,10 @@ class SpikeBall3DVisualizer:
         """
         self.size *= 0.98
         self.color[:, -1] = 0.98 * self.color[:, -1]
-        self.indicators.setData(
-            size=self.size, pos=self.centroid_positions, color=self.color
-        )
+        if self.visible:
+            self.indicators.setData(
+                size=self.size, pos=self.centroid_positions, color=self.color
+            )
 
     def estimate_velocity(self):
         self.velocity = np.random.uniform(-1, 1, (num_neurons, 3))
@@ -638,7 +630,7 @@ class SpikeRaster2DVisualizer:
         self.frame += 1
 
 
-class LatentOrbitVisualizer:
+class LatentCycleVisualizer:
     def __init__(self, x_index, y_index, widget=None):
         # Create a PyQtGraph window
         if widget is None:
@@ -715,7 +707,7 @@ class LatentOrbitVisualizer:
         self.frame += 1
 
 
-class LatentOrbitVisualizer_2:
+class LatentOrbitVisualizer:
     def __init__(self, x_index, y_index, color, visible=False, widget=None):
         # Create a PyQtGraph window
         if widget is None:
@@ -762,6 +754,7 @@ class LatentOrbitVisualizer_2:
         self.frame = 0
         self.prev_count = 0
         self.count = 0
+        self.visible = visible
 
     def animation(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
@@ -774,7 +767,7 @@ class LatentOrbitVisualizer_2:
             self.frame = self.L
         if self.frame > 0:
             self.data[:, self.frame] = LATENT[0]
-        if self.frame % 10 == 0 and self.frame > 0:
+        if self.frame % 10 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
             for i in range(0, 6):
                 pts = np.vstack(
@@ -806,7 +799,9 @@ theta = np.arctan2(C[1, :], C[0, :])
 
 raster_sort_idx = np.argsort(theta)
 theta = theta[raster_sort_idx]
-target_location = np.vstack([np.random.rand(100), np.cos(theta), np.sin(theta)]).T * 7
+target_location = np.vstack([np.zeros_like(theta), np.cos(theta), np.sin(theta)]).T * 7
+target_location[raster_sort_idx < 50, 1] += 7
+target_location[raster_sort_idx >= 50, 1] -= 7
 
 app = QApplication([])
 # -----------------------------Visualization on the wall-----------------------------
@@ -851,13 +846,17 @@ vis_wall_raster_bottom = RasterWithTrace3DVisualizer(
     orientation="bot", visible=1, widget=wall_plot_widget
 )
 vis_wall_spike = SpikeBall3DVisualizer(
-    target_location=target_location, widget=wall_plot_widget
+    target_location=target_location, visible=WALL_SPIKE[0], widget=wall_plot_widget
 )
-vis_wall_true_latent = LatentOrbitVisualizer_2(
-    0, 1, color=TRUE_LATENT_COLOR, widget=wall_plot_widget
+vis_wall_true_latent = LatentOrbitVisualizer(
+    0, 1, color=TRUE_LATENT_COLOR, visible=WALL_TRUE_LATENT[0], widget=wall_plot_widget
 )
-vis_wall_inferred_latent = LatentOrbitVisualizer_2(
-    1, 1, color=INFERRED_LATENT_COLOR, widget=wall_plot_widget
+vis_wall_inferred_latent = LatentOrbitVisualizer(
+    1,
+    1,
+    color=INFERRED_LATENT_COLOR,
+    visible=WALL_INFERRED_LATENT[0],
+    widget=wall_plot_widget,
 )
 
 # ---------------------------Visualization on the Ceiling-----------------------------
@@ -893,26 +892,32 @@ class SpikePacer(QtCore.QObject):
         self.latent_trigger.emit()
 
     def max_switch_wall_raster_L(self, address, *args):
+        vis_wall_raster_left.visible = args[0]
         vis_wall_raster_left.img.setVisible(args[0])
 
     def max_switch_wall_raster_R(self, address, *args):
+        vis_wall_raster_right.visible = args[0]
         vis_wall_raster_right.img.setVisible(args[0])
 
     def max_switch_wall_raster_T(self, address, *args):
+        vis_wall_raster_top.visible = args[0]
         vis_wall_raster_top.img.setVisible(args[0])
 
     def max_switch_wall_raster_B(self, address, *args):
+        vis_wall_raster_bottom.visible = args[0]
         vis_wall_raster_bottom.img.setVisible(args[0])
 
     def max_switch_wall_spike(self, address, *args):
+        vis_wall_spike.visible = args[0]
         vis_wall_spike.indicators.setVisible(args[0])
 
     def max_switch_wall_true_latent(self, address, *args):
-        print(args)
+        vis_wall_true_latent.visible = args[0]
         for trace in vis_wall_true_latent.traces.items():
             trace[1].setVisible(args[0])
 
     def max_switch_wall_inferred_latent(self, address, *args):
+        vis_wall_true_latent.visible = args[0]
         for trace in vis_wall_true_latent.traces.items():
             trace[1].setVisible(args[0])
 

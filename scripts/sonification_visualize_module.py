@@ -8,7 +8,7 @@ import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
 from pyqtgraph.Qt import QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QGraphicsView
+from PyQt5.QtWidgets import QApplication, QGraphicsView, QDesktopWidget
 from PyQt5.QtCore import QTimerEvent, QTimer
 from PyQt5.QtCore import pyqtSignal
 
@@ -23,14 +23,13 @@ num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
 LATENT = [np.zeros(8)]
 
-
 GRID_SIZE_WIDTH = 50
 GRID_SIZE_HEIGHT = 30
 
 DISC_RADIUS_INC = [20]
 DISC_DECAY_FACTOR = [0.99]
 LATENT_DECAY_FACTOR = [0.99]
-RASTER_DECAY_FACTOR = [0.95]
+RASTER_DECAY_FACTOR = [0.1]
 
 WALL_SPIKE = [1]
 WALL_TRUE_LATENT = [1]
@@ -39,7 +38,7 @@ CEILING_RASTER = [1]
 CEILING_TRUE_LATENT = [1]
 CEILING_INFERRED_LATENT = [1]
 CEILING_SPIKE = [1]
-SPIKE_ORGANIZATION = [0]
+SPIKE_ORGANIZATION = [1]
 
 COLOR_INDEX = [0]
 TRUE_LATENT_COLOR = [51, 255, 51, 255]
@@ -48,7 +47,9 @@ pg.setConfigOptions(useOpenGL=True)
 
 
 class RasterWithTrace3DVisualizer:
-    def __init__(self, orientation, visible=True, max_level=20, widget=None):
+    def __init__(
+        self, orientation, visible=True, max_level=5, separate=False, widget=None
+    ):
         # Create a PyQtGraph window
         if widget is None:
             self.app = QApplication([])
@@ -60,7 +61,7 @@ class RasterWithTrace3DVisualizer:
             self.plot_widget = widget
             self.plot_widget.show()
 
-        self.num_neurons = num_neurons
+        self.num_neurons = 25 if separate else 100
         self.L = 1000
         self.buffer = 1000
         self.firing_rates = np.zeros((self.L + self.buffer, num_neurons))
@@ -72,44 +73,48 @@ class RasterWithTrace3DVisualizer:
         self.img = gl.GLImageItem(raster_texture)
 
         if orientation == "left":
+            self.slicer = slice(50, 75) if separate else slice(0, 100)
             scale_factor = [
                 -GRID_SIZE_WIDTH / self.L,
-                GRID_SIZE_HEIGHT / self.num_neurons,
+                -GRID_SIZE_HEIGHT / self.num_neurons,
                 1,
             ]
             self.img.scale(*scale_factor)
             self.img.rotate(90, 1, 0, 0)
             self.img.translate(
-                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 4,
+                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
                 -GRID_SIZE_WIDTH / 2,
-                -GRID_SIZE_HEIGHT / 2 + GRID_SIZE_HEIGHT / 6,
+                GRID_SIZE_HEIGHT / 2 + 0,
             )
         elif orientation == "right":
+            self.slicer = slice(0, 25) if separate else slice(0, 100)
             scale_factor = [
                 -GRID_SIZE_WIDTH / self.L,
-                GRID_SIZE_HEIGHT / self.num_neurons,
+                -GRID_SIZE_HEIGHT / self.num_neurons,
                 1,
             ]
             self.img.scale(*scale_factor)
             self.img.rotate(-90, 1, 0, 0)
             self.img.translate(
-                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 4,
+                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
                 +GRID_SIZE_WIDTH / 2,
-                +GRID_SIZE_HEIGHT / 2 + GRID_SIZE_HEIGHT / 6,
+                -GRID_SIZE_HEIGHT / 2 + 0,
             )
         elif orientation == "top":
+            self.slicer = slice(25, 50) if separate else slice(0, 100)
             scale_factor = [
                 -GRID_SIZE_WIDTH / self.L,
-                GRID_SIZE_WIDTH / self.num_neurons,
+                -GRID_SIZE_WIDTH / self.num_neurons,
                 1,
             ]
             self.img.scale(*scale_factor)
             self.img.translate(
-                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 4,
-                -GRID_SIZE_WIDTH / 2,
-                +GRID_SIZE_HEIGHT / 2 + GRID_SIZE_HEIGHT / 6,
+                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
+                +GRID_SIZE_WIDTH / 2,
+                +GRID_SIZE_HEIGHT / 2 + 0,
             )
         elif orientation == "bot":
+            self.slicer = slice(75, 100) if separate else slice(0, 100)
             scale_factor = [
                 -GRID_SIZE_WIDTH / self.L,
                 GRID_SIZE_WIDTH / self.num_neurons,
@@ -117,9 +122,9 @@ class RasterWithTrace3DVisualizer:
             ]
             self.img.scale(*scale_factor)
             self.img.translate(
-                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 4,
+                +GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
                 -GRID_SIZE_WIDTH / 2,
-                -GRID_SIZE_HEIGHT / 2 + GRID_SIZE_HEIGHT / 6,
+                -GRID_SIZE_HEIGHT / 2 + 0,
             )
 
         self.img.setVisible(self.visible)
@@ -148,7 +153,7 @@ class RasterWithTrace3DVisualizer:
                 self.firing_rates[self.frame - 1, :] * self.decay_factor
             )
 
-        for i, firing_event in enumerate(SPIKES[0]):
+        for i, firing_event in enumerate(SPIKES[0][self.slicer]):
             if firing_event > 0:  # If there's firing
                 self.firing_rates[self.frame, i] += 5  # Instantly increase firing rate
 
@@ -375,6 +380,7 @@ class SpikeBall3DVisualizer:
         self.color = np.repeat(
             np.array([0.2, 1, 0.2, 0.4])[np.newaxis, :], num_neurons, axis=0
         )
+        self.color[raster_sort_idx % 50 > 25] = [1, 0.7, 0.0, 0.4]
 
     def update(self):
         if self.frame % 10 == 0:
@@ -710,7 +716,7 @@ class LatentOrbitVisualizer:
 
 
 class LatentOrbitVisualizer_2:
-    def __init__(self, x_index, y_index, color, widget=None):
+    def __init__(self, x_index, y_index, color, visible=False, widget=None):
         # Create a PyQtGraph window
         if widget is None:
             self.app = QApplication([])
@@ -751,6 +757,7 @@ class LatentOrbitVisualizer_2:
                 width=5,
                 antialias=True,
             )
+            self.traces[i].setVisible(visible)
             self.plot_widget.addItem(self.traces[i])
         self.frame = 0
         self.prev_count = 0
@@ -795,36 +802,41 @@ C_slow, b_slow = np.hstack(param["C"]), param["b"]
 
 C = np.hstack([C_fast, C_slow])
 b = np.vstack([b_fast, b_slow]).flatten()
-
-r = np.sqrt(C[0, :] ** 2 + C[1, :] ** 2)
 theta = np.arctan2(C[1, :], C[0, :])
-target_location = np.vstack([np.random.rand(100), np.cos(theta), np.sin(theta)]).T * 10
+
+raster_sort_idx = np.argsort(theta)
+theta = theta[raster_sort_idx]
+target_location = np.vstack([np.random.rand(100), np.cos(theta), np.sin(theta)]).T * 7
 
 app = QApplication([])
 # -----------------------------Visualization on the wall-----------------------------
 wall_plot_widget = gl.GLViewWidget()
 wall_plot_widget.setGeometry(0, 0, 1920, 1200)
-wall_plot_widget.opts["center"] = QtGui.QVector3D(-GRID_SIZE_WIDTH / 4, 0, 0)
+wall_plot_widget.opts["center"] = QtGui.QVector3D(-GRID_SIZE_WIDTH / 2, 0, 0)
 wall_plot_widget.opts["distance"] = 50
-wall_plot_widget.opts["fov"] = 90
+wall_plot_widget.opts["fov"] = 100
 wall_plot_widget.opts["elevation"] = 0
 wall_plot_widget.opts["azimuth"] = 0
 
 g_center = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_HEIGHT, GRID_SIZE_WIDTH, 1))
 g_center.rotate(90, 0, 1, 0)
-g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 4, 0, GRID_SIZE_HEIGHT / 6)
+g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2, 0, 0)
 wall_plot_widget.addItem(g_center)
 g_left = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_left.rotate(90, 1, 0, 0)
-g_left.translate(GRID_SIZE_HEIGHT / 4, -GRID_SIZE_WIDTH / 2, GRID_SIZE_HEIGHT / 6)
+g_left.translate(GRID_SIZE_HEIGHT / 2, -GRID_SIZE_WIDTH / 2, 0)
 wall_plot_widget.addItem(g_left)
 g_floor = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_WIDTH, 1))
-g_floor.translate(GRID_SIZE_HEIGHT / 4, 0, -GRID_SIZE_HEIGHT / 2 + GRID_SIZE_HEIGHT / 6)
+g_floor.translate(GRID_SIZE_HEIGHT / 2, 0, -GRID_SIZE_HEIGHT / 2 + 0)
 wall_plot_widget.addItem(g_floor)
 g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_right.rotate(-90, 1, 0, 0)
-g_right.translate(GRID_SIZE_HEIGHT / 4, +GRID_SIZE_WIDTH / 2, GRID_SIZE_HEIGHT / 6)
+g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)
 wall_plot_widget.addItem(g_right)
+monitor = QDesktopWidget().screenGeometry(1)
+wall_plot_widget.move(monitor.left(), monitor.top())
+wall_plot_widget.showFullScreen()
+
 
 vis_wall_raster_left = RasterWithTrace3DVisualizer(
     orientation="left", visible=1, widget=wall_plot_widget
@@ -833,10 +845,10 @@ vis_wall_raster_right = RasterWithTrace3DVisualizer(
     orientation="right", visible=1, widget=wall_plot_widget
 )
 vis_wall_raster_top = RasterWithTrace3DVisualizer(
-    orientation="top", visible=0, widget=wall_plot_widget
+    orientation="top", visible=1, widget=wall_plot_widget
 )
 vis_wall_raster_bottom = RasterWithTrace3DVisualizer(
-    orientation="bot", visible=0, widget=wall_plot_widget
+    orientation="bot", visible=1, widget=wall_plot_widget
 )
 vis_wall_spike = SpikeBall3DVisualizer(
     target_location=target_location, widget=wall_plot_widget
@@ -869,6 +881,7 @@ class SpikePacer(QtCore.QObject):
 
         SPIKES[0][:50] = np.array(args[0])
         SPIKES[0][50:] = np.array(args[1])
+        SPIKES[0] = SPIKES[0][raster_sort_idx]
         packet_count += 1
         self.spike_trigger.emit()
 
@@ -939,13 +952,13 @@ async def init_main():
     dispatcher_max.map("/WALL_SPIKE", spike_pacer.max_switch_wall_spike)
 
     server_spike = AsyncIOOSCUDPServer(
-        (SERVER_IP, SPIKE_PORT), dispatcher_python, asyncio.get_event_loop()
+        (LOCAL_SERVER, SPIKE_PORT), dispatcher_python, asyncio.get_event_loop()
     )
     server_latent = AsyncIOOSCUDPServer(
-        (SERVER_IP, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
+        (LOCAL_SERVER, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
     )
     server_max = AsyncIOOSCUDPServer(
-        (SERVER_IP, MAX_CONTROL_PORT), dispatcher_max, asyncio.get_event_loop()
+        ("0.0.0.0", MAX_CONTROL_PORT), dispatcher_max, asyncio.get_event_loop()
     )
     transport, protocol = await server_spike.create_serve_endpoint()
     transport, protocol = await server_latent.create_serve_endpoint()

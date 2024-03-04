@@ -74,14 +74,14 @@ async def init_main():
         slow_latent_block.start(),
         fast_spike_block.start(SPIKES_FAST),
         slow_spike_block.start(SPIKES_SLOW),
+        spike_sending_loop(
+            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=False
+        ),
         true_latent_sending_loop(
             ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
         ),
         phase_diff_sending_loop(
             ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
-        ),
-        spike_sending_loop(
-            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=False
         ),
     )
 

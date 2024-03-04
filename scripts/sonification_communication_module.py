@@ -10,7 +10,7 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 # OSC ips / ports
 global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, SPIKE_PORT_2, TRUE_LATENT_PORT, INFERRED_LATENT_PORT, DISPATCHER, TIMER_DELAY
 LOCAL_SERVER = "127.0.0.1"
-MAX_SERVER = "192.168.0.3"
+MAX_SERVER = "127.0.0.1"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
 SPIKE_VISUALIZE_PORT = 1112
@@ -98,7 +98,7 @@ async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
             "/PHASE_DIFF",
-            np.concatenate([fask_block.get_phase_diff(), slow_block.get_phase_diff()]),
+            [fask_block.get_phase_diff(), slow_block.get_phase_diff()],
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
@@ -125,7 +125,7 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
     local_visualize_OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_VISUALIZE_PORT)
     while True:
         start_t = time.perf_counter_ns()
-        msg = np.stack(
+        msg = np.concatenate(
             [
                 fast_block.y[0] > 0,
                 slow_block.y[0] > 0,

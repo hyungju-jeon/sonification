@@ -31,9 +31,9 @@ DISC_DECAY_FACTOR = [0.99]
 LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.1]
 
-WALL_SPIKE = [0]
-WALL_TRUE_LATENT = [0]
-WALL_INFERRED_LATENT = [0]
+WALL_SPIKE = [1]
+WALL_TRUE_LATENT = [1]
+WALL_INFERRED_LATENT = [1]
 CEILING_RASTER = [0]
 CEILING_TRUE_LATENT = [0]
 CEILING_INFERRED_LATENT = [0]
@@ -43,6 +43,8 @@ SPIKE_ORGANIZATION = [1]
 COLOR_INDEX = [0]
 TRUE_LATENT_COLOR = [51, 255, 51, 255]
 INFERRED_LATENT_COLOR = [255, 176, 0, 255]
+
+SCALE_FACTOR = GRID_SIZE_HEIGHT / 8
 pg.setConfigOptions(useOpenGL=True)
 
 
@@ -387,7 +389,7 @@ class SpikeBall3DVisualizer:
         if self.frame % 10 == 0:
             self.shrink_circle()
             self.estimate_velocity()
-            # self.move_centroids()
+
             if any(SPIKES[0] > 0):
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
         # print(f"Frame: {self.frame}, Count: {packet_count}")
@@ -772,9 +774,9 @@ class LatentOrbitVisualizer:
             for i in range(0, 6):
                 pts = np.vstack(
                     [
-                        self.data[self.x, slice_window] * GRID_SIZE_HEIGHT / 4,
-                        self.data[self.z[i], slice_window] * GRID_SIZE_HEIGHT / 4,
-                        self.data[self.z[i + 1], slice_window] * GRID_SIZE_HEIGHT / 4,
+                        self.data[self.x, slice_window] * SCALE_FACTOR,
+                        self.data[self.z[i], slice_window] * SCALE_FACTOR,
+                        self.data[self.z[i + 1], slice_window] * SCALE_FACTOR,
                     ]
                 ).transpose()
                 self.traces[i].setData(
@@ -799,9 +801,16 @@ theta = np.arctan2(C[1, :], C[0, :])
 
 raster_sort_idx = np.argsort(theta)
 theta = theta[raster_sort_idx]
-target_location = np.vstack([np.zeros_like(theta), np.cos(theta), np.sin(theta)]).T * 7
-target_location[raster_sort_idx < 50, 1] += 7
-target_location[raster_sort_idx >= 50, 1] -= 7
+target_location = np.vstack(
+    [
+        np.ones_like(theta) * (-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2),
+        np.cos(theta) * GRID_SIZE_HEIGHT / 2,
+        np.sin(theta) * GRID_SIZE_HEIGHT / 2,
+    ]
+).T
+target_location[:, 1:] *= 0.7
+target_location[raster_sort_idx < 50, 1] += GRID_SIZE_HEIGHT / 2
+target_location[raster_sort_idx >= 50, 1] -= GRID_SIZE_HEIGHT / 2
 
 app = QApplication([])
 # -----------------------------Visualization on the wall-----------------------------
@@ -819,7 +828,7 @@ empty_widget.setGeometry(0, 0, 1920, 700)
 wall_plot_widget = gl.GLViewWidget()
 wall_plot_widget.setGeometry(0, 0, 1920, 500)
 wall_plot_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
-wall_plot_widget.opts["distance"] = 50
+wall_plot_widget.opts["distance"] = 60
 wall_plot_widget.opts["fov"] = 90
 wall_plot_widget.opts["elevation"] = 0
 wall_plot_widget.opts["azimuth"] = 0
@@ -889,8 +898,10 @@ class SpikePacer(QtCore.QObject):
     def spike_osc_handler(self, address, *args):
         global SPIKES, packet_count
 
-        SPIKES[0][:50] = np.array(args[0])
-        SPIKES[0][50:] = np.array(args[1])
+        # SPIKES[0][:50] = np.array(args[0])
+        # SPIKES[0][50:] = np.array(args[1])
+        stime = time.perf_counter_ns()
+        SPIKES[0] = np.array(args)
         SPIKES[0] = SPIKES[0][raster_sort_idx]
         packet_count += 1
         self.spike_trigger.emit()

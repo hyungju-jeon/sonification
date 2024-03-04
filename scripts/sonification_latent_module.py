@@ -15,13 +15,10 @@ from sonification_communication_module import *
 
 # ---------------------------------------------------------------- #
 # Global Arrays
-global LATENT_FAST, SPIKES_FAST, PHASE_DIFF_FAST
 SPIKES_FAST = [np.zeros((50, 1))]
 LATENT_FAST = [np.zeros((200, 2))]
-PHASE_DIFF_FAST = [0]
 LATENT_SLOW = [np.zeros((200, 2))]
 SPIKES_SLOW = [np.zeros((50, 1))]
-PHASE_DIFF_SLOW = [0]
 INPUT_X = [0]
 INPUT_Y = [0]
 
@@ -55,7 +52,7 @@ class LatentDynamics:
         self.coupled_cycle = two_limit_circle(self.reference_cycle, self.perturb_cycle)
 
         self.latent = self.coupled_cycle.get_state()
-        self.phase_diff = self.coupled_cycle.get_phase_diff().item()
+        self.phase_diff = self.coupled_cycle.get_phase_diff()
         self.verbose = verbose
 
         # pass the handlers to the dispatcher
@@ -74,7 +71,7 @@ class LatentDynamics:
             self.coupled_cycle.update_state(u)
             self.latent = self.get_state()
             # print()
-            self.phase_diff = self.coupled_cycle.get_phase_diff().item()
+            self.phase_diff = self.coupled_cycle.get_phase_diff()
 
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(dt * 1e9 - (time.perf_counter_ns() - start_t), 0)
@@ -89,7 +86,7 @@ class LatentDynamics:
         return self.coupled_cycle.get_state()
 
     def get_phase_diff(self):
-        return self.coupled_cycle.get_state()
+        return self.coupled_cycle.get_phase_diff()
 
     async def setup_server(self):
         # python-osc method for establishing the UDP communication with max

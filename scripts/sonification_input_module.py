@@ -31,6 +31,7 @@ class MotionEnergy:
         self.prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         self.verbose = verbose
         self.OSCsender = SimpleUDPClient(LOCAL_SERVER, MOTION_ENERGY_PORT)
+        self.InferenceOSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_INFERENCE_PORT)
 
     async def start(self):
         while True:
@@ -84,10 +85,10 @@ class MotionEnergy:
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(5e-2 * 1e9 - (time.perf_counter_ns() - start_t), 0)
 
-            if sleep_duration == 0 & self.verbose:
-                print(
-                    f"Input iteration took {elapsed_time/1e6}ms which is longer than {5e-2*1e3} ms"
-                )
+            # if sleep_duration == 0 & self.verbose:
+            #     print(
+            #         f"Input iteration took {elapsed_time/1e6}ms which is longer than {5e-2*1e3} ms"
+            #     )
             await busy_timer(sleep_duration)
 
         # Release video capture and close windows
@@ -119,13 +120,17 @@ class MotionEnergy:
             "/MOTION_ENERGY",
             [x.astype(float), y.astype(float)],
         )
+        self.InferenceOSCsender.send_message(
+            "/MOTION_ENERGY",
+            [x.astype(float), y.astype(float)],
+        )
 
         if self.verbose:
             print(f"Sending packet: /MOTION_ENERGY {[x, y]}")
 
 
 if __name__ == "__main__":
-    motion_energy = MotionEnergy(verbose=int(sys.argv[1]))
+    motion_energy = MotionEnergy(verbose=False)
     asyncio.run(motion_energy.start())
     print("Motion Energy Analysis Complete")
     print("Exiting...")

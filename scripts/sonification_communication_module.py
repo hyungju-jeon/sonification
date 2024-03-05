@@ -17,6 +17,7 @@ SPIKE_VISUALIZE_PORT = 1112
 SPIKE_INFERENCE_PORT = 1113
 TRUE_LATENT_PORT = 1114
 INFERRED_LATENT_PORT = 1114
+INFERENCE_LATENT_PORT = 1115
 MAX_INPUT_PORT = 1211
 MAX_CONTROL_PORT = 1211
 MAX_OUTPUT_PORT = 1212
@@ -58,6 +59,7 @@ async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
     MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
     LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
+    INFERENEC_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
@@ -67,6 +69,12 @@ async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=
             ).tolist(),
         )
         LOCAL_OSCsender.send_message(
+            "/TRAJECTORY",
+            np.concatenate(
+                [fask_block.get_state(), slow_block.get_state()], axis=0
+            ).tolist(),
+        )
+        INFERENEC_OSCsender.send_message(
             "/TRAJECTORY",
             np.concatenate(
                 [fask_block.get_state(), slow_block.get_state()], axis=0
@@ -112,13 +120,13 @@ async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=F
 
 async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False):
     """
-    Sends spikes to Max/MSP at regular intervals.
+        Sends spikes to Max/MSP at regular intervals.
 
-    Args:
-        interval (float): The interval between each spike sending.
+        Args:
+            interval (float): The interval between each spike sending.
 
     Returns:
-        None
+            None
     """
     MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
     local_inference_OSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_INFERENCE_PORT)

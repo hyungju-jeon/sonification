@@ -8,6 +8,7 @@ import h5py
 from matplotlib.pylab import f
 import matplotlib.pyplot as plt
 import numpy as np
+from sympy import N
 import torch
 from lightning.pytorch.loggers import CSVLogger
 from matplotlib import cm
@@ -123,20 +124,21 @@ def initialize_loading_matrix():
 
 
 def generate_sample(n_time_bins):
-    u = np.random.rand(n_time_bins * 20, 2)
-    u[:, 0] = np.clip(u[:, 0] * 2 * np.pi, -np.pi, np.pi) * 0.001
-    u[:, 1] = np.clip(u[:, 1], -1, 1) * 0.01
+    u_polar = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5)
+    u_polar[:, 0] = np.clip(u_polar[:, 0] * 2 * np.pi, -np.pi, np.pi) * 0.001
+    u_polar[:, 1] = np.clip(u_polar[:, 1], -1, 1) * 0.01
+    u_repeat = np.repeat(u_polar, 20, axis=0)
 
     reference_cycle = limit_circle(**CYCLE_FAST)
     perturb_cycle = limit_circle(**CYCLE_FAST)
     coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    z_fast = coupled_cycle.generate_trajectory(20 * n_time_bins, u)
+    z_fast = coupled_cycle.generate_trajectory(20 * n_time_bins, u_repeat)
     y_fast = np.random.poisson(np.exp(z_fast @ C_fast + b_fast))
 
     reference_cycle = limit_circle(**CYCLE_SLOW)
     perturb_cycle = limit_circle(**CYCLE_SLOW)
     coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    z_slow = coupled_cycle.generate_trajectory(20 * n_time_bins, u)
+    z_slow = coupled_cycle.generate_trajectory(20 * n_time_bins, u_repeat)
     y_slow = np.random.poisson(np.exp(z_slow @ C_slow + b_slow))
 
     sum_y_fast = np.zeros((n_time_bins, 50))
@@ -145,10 +147,16 @@ def generate_sample(n_time_bins):
     for i in range(n_time_bins):
         sum_y_fast[i, :] = np.sum(y_fast[i * 20 : (i + 1) * 20, :], axis=0)
         sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
-        sum_u[i, :] = np.mean(u[i * 20 : (i + 1) * 20, :], axis=0)
 
-    return torch.tensor(np.hstack([sum_y_fast, sum_y_slow])), torch.tensor(
-        np.hstack([z_fast[::20], z_slow[::20]]), sum_u
+    u_cart = np.zeros_like(u_polar)
+
+    u_cart[:, 0] = u_polar[:, 0] * np.cos(u_polar[:, 1])
+    u_cart[:, 1] = u_polar[:, 0] * np.sin(u_polar[:, 1])
+
+    return (
+        torch.tensor(np.hstack([sum_y_fast, sum_y_slow])),
+        torch.tensor(np.hstack([z_fast[::20], z_slow[::20]])),
+        torch.tensor(u_cart * 20).type(torch.float32),
     )
 
 
@@ -175,14 +183,24 @@ def train_network():
     """data params"""
     n_trials = 1000
     n_neurons = 100
-    n_time_bins = 100
+    n_time_bins = 200
 
-    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
-        False
-    )
-    B.weight.data = torch.tensor(
-        [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
-    ).type(default_dtype)
+    def B(u):
+        Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
+            default_dtype
+        )
+        for i in range(4):
+            if i % 2 == 1:
+                Bu[:, :, 2 * i] = u[:, :, 0]
+                Bu[:, :, 2 * i + 1] = u[:, :, 1]
+        return Bu
+
+    # B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
+    #     False
+    # )
+    # B.weight.data = torch.tensor(
+    #     [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
+    # ).type(default_dtype)
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
@@ -221,16 +239,33 @@ def train_network():
     """dynamics module"""
 
     # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
+    # def A(x):
+    #     Ax = torch.zeros_like(x)
+    #     Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
+    #     Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
+    #     Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
+    #     Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
+    #     Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
+    #     Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
+    #     Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
+    #     Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+    #     return Ax
+
     def A(x):
         Ax = torch.zeros_like(x)
-        Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
-        Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
-        Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
-        Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
-        Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
-        Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
-        Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
-        Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+        for i in range(4):
+            r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
+            theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
+
+            r_new = r + r * (1 - r**2) * bin_sz
+            theta_new = (
+                theta + 2 * np.pi * 1.5 * bin_sz
+                if i < 2
+                else theta + 2 * np.pi * 0.5 * bin_sz
+            )
+
+            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
         return Ax
 
     dynamics_fn = A
@@ -303,7 +338,7 @@ def train_network():
                 torch.save(ssm.state_dict(), f"results/ssm_state2_dict_epoch_{t}.pt")
                 fig, axs = plt.subplots(1, n_latents, figsize=(20, 5))
                 [
-                    axs[i].plot(z_c[j, 0, :, i], color=blues(j), alpha=0.5)
+                    axs[i].plot(z_s[j, 0, :, i], color=blues(j), alpha=0.5)
                     for i in range(n_latents)
                     for j in range(n_samples)
                 ]
@@ -317,7 +352,7 @@ def train_network():
                 plt.close()
                 # plt.show()
 
-    torch.save(ssm.state_dict(), f"results/ssm_state2_dict_epoch_{n_epochs}.pt")
+    torch.save(ssm.state_dict(), f"results/ssm_cart_state_dict_epoch_{n_epochs}.pt")
 
     """real-time test"""
     z_f = []
@@ -340,7 +375,7 @@ def train_network():
         )
 
     with torch.no_grad():
-        fig, axs = plt.subplots(1, n_latents, 20, 5)
+        fig, axs = plt.subplots(1, n_latents, figsize=(20, 5))
         [
             axs[i].plot(z_c[j, 0, :, i], color=blues(j), alpha=0.5)
             for i in range(n_latents)

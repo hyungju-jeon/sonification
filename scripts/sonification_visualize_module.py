@@ -27,12 +27,13 @@ packet_count = 0
 num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
 LATENT = [np.zeros(8)]
+INFERRED = [np.zeros(8)]
 
 ASPECT_RATIO = 0.7
 GRID_SIZE_WIDTH = 100
 GRID_SIZE_HEIGHT = 50
 
-DISC_RADIUS_INC = [5]
+DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
 LATENT_DECAY_FACTOR = [0.99]
 RASTER_DECAY_FACTOR = [0.1]
@@ -41,9 +42,9 @@ WALL_RASTER_LEFT = [0]
 WALL_RASTER_RIGHT = [0]
 WALL_RASTER_TOP = [0]
 WALL_RASTER_BOTTOM = [1]
-WALL_SPIKE = [1]
-WALL_TRUE_LATENT = [0]
-WALL_INFERRED_LATENT = [0]
+WALL_SPIKE = [0]
+WALL_TRUE_LATENT = [1]
+WALL_INFERRED_LATENT = [1]
 
 CEILING_RASTER = [1]
 CEILING_TRUE_LATENT = [0]
@@ -753,7 +754,87 @@ class LatentOrbitVisualizer:
             self.data[:, self.frame] = LATENT[0]
         if self.frame % 10 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
-            for i in range(0, 6):
+            for i in range(0, 3):
+                pts = np.vstack(
+                    [
+                        np.ones_like(self.data[0, slice_window])
+                        * (-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2),
+                        (self.data[i, slice_window] * SCALE_FACTOR + self.bias)
+                        * ASPECT_RATIO,
+                        self.data[i + 1, slice_window] * SCALE_FACTOR,
+                    ]
+                ).transpose()
+                self.traces[i].setData(
+                    pos=pts,
+                )
+            # print(f"Frame: {self.count}, Count: {packet_count}")
+        self.frame += 1
+
+
+class InferredOrbitVisualizer:
+    def __init__(self, x_index, y_index, color, visible=False, widget=None):
+        # Create a PyQtGraph window
+        if widget is None:
+            self.app = QApplication([])
+            self.plot_widget = gl.GLViewWidget()
+            self.plot_widget.setGeometry(0, 110, 640, 480)
+            self.plot_widget.opts["distance"] = 30
+            self.plot_widget.opts["fov"] = 90
+            self.plot_widget.opts["elevation"] = -5
+            self.plot_widget.opts["azimuth"] = 0
+            self.plot_widget.show()
+        else:
+            self.plot_widget = widget
+
+        self.L = 1000
+        self.buffer = 1000
+        self.latent = np.zeros(
+            (self.L + self.buffer, 8)
+        )  # Initialize firing rates for each neuron
+        self.decay_factor = LATENT_DECAY_FACTOR[0] ** 2
+        self.x = x_index
+        self.y = y_index
+        self.traces = dict()
+        self.heads = dict()
+        self.color = np.repeat(np.array(color)[np.newaxis, :] / 255, self.L, axis=0)
+
+        for i in range(1, self.L):
+            self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
+        self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
+        self.color = self.color[: self.L]
+        self.color = self.color[::-1]
+        self.data = np.zeros((8, self.L + self.buffer))
+
+        self.z = [x for x in range(8) if x not in [self.x]]
+        for i in range(7):
+            self.traces[i] = gl.GLLinePlotItem(
+                pos=np.zeros((self.L, 3)),
+                color=self.color,
+                width=5,
+                antialias=True,
+            )
+            self.traces[i].setVisible(visible)
+            self.plot_widget.addItem(self.traces[i])
+        self.frame = 0
+        self.prev_count = 0
+        self.count = 0
+        self.bias = 0
+        self.visible = visible
+
+    def animation(self):
+        if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
+            QApplication.instance().exec_()
+
+    def update(self):
+        self.count += 1
+        if self.frame >= self.L + self.buffer:
+            self.data = np.roll(self.data, -self.buffer, axis=1)
+            self.frame = self.L
+        if self.frame > 0:
+            self.data[:, self.frame] = INFERRED[0]
+        if self.frame % 1 == 0 and self.frame > 0 and self.visible:
+            slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
+            for i in range(0, 3):
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window])
@@ -852,7 +933,7 @@ vis_wall_spike = SpikeBall3DVisualizer(
 vis_wall_true_latent = LatentOrbitVisualizer(
     0, 1, color=TRUE_LATENT_COLOR, visible=WALL_TRUE_LATENT[0], widget=wall_plot_widget
 )
-vis_wall_inferred_latent = LatentOrbitVisualizer(
+vis_wall_inferred_latent = InferredOrbitVisualizer(
     1,
     1,
     color=INFERRED_LATENT_COLOR,
@@ -881,7 +962,7 @@ vis_ceiling_true_latent = LatentOrbitCeilingVisualizer(
     visible=CEILING_TRUE_LATENT[0],
     widget=ceiling_plot_widget,
 )
-vis_ceiling_inferred_latent = LatentOrbitCeilingVisualizer(
+vis_ceiling_inferred_latent = InferredOrbitVisualizer(
     0,
     1,
     color=TRUE_LATENT_COLOR,
@@ -897,13 +978,16 @@ vis_ceiling_raster = RasterWithTrace3DVisualizer(
 class SpikePacer(QtCore.QObject):
     spike_trigger = pyqtSignal()
     latent_trigger = pyqtSignal()
+    inferred_trigger = pyqtSignal()
 
-    def __init__(self, spike_fcn, latent_fcn):
+    def __init__(self, spike_fcns, latent_fcns, inferred_fcns):
         super().__init__()
-        for fcn in spike_fcn:
+        for fcn in spike_fcns:
             self.spike_trigger.connect(fcn)
-        for fcn in latent_fcn:
+        for fcn in latent_fcns:
             self.latent_trigger.connect(fcn)
+        for fcn in inferred_fcns:
+            self.inferred_trigger.connect(fcn)
 
     def spike_osc_handler(self, address, *args):
         global SPIKES, packet_count
@@ -918,6 +1002,13 @@ class SpikePacer(QtCore.QObject):
         LATENT[0] = np.array(args)
         # packet_count += 1
         self.latent_trigger.emit()
+
+    def inferred_osc_handler(self, address, *args):
+        global INFERRED, packet_count
+
+        INFERRED[0] = np.array(args)
+        # packet_count += 1
+        self.inferred_trigger.emit()
 
     def max_switch_wall_raster_L(self, address, *args):
         vis_wall_raster_left.visible = args[0]
@@ -997,7 +1088,7 @@ class SpikePacer(QtCore.QObject):
 
 
 spike_pacer = SpikePacer(
-    spike_fcn=[
+    spike_fcns=[
         vis_wall_raster_left.update,
         vis_wall_raster_bottom.update,
         vis_wall_raster_right.update,
@@ -1005,10 +1096,12 @@ spike_pacer = SpikePacer(
         vis_wall_spike.update,
         vis_ceiling_raster.update,
     ],
-    latent_fcn=[
+    latent_fcns=[
         vis_wall_true_latent.update,
-        vis_wall_inferred_latent.update,
         vis_ceiling_true_latent.update,
+    ],
+    inferred_fcns=[
+        vis_wall_inferred_latent.update,
         vis_ceiling_inferred_latent.update,
     ],
 )
@@ -1018,6 +1111,7 @@ async def init_main():
     dispatcher_python = Dispatcher()
     dispatcher_python.map("/SPIKES", spike_pacer.spike_osc_handler)
     dispatcher_python.map("/TRAJECTORY", spike_pacer.latent_osc_handler)
+    dispatcher_python.map("/INFERRED_TRAJECTORY", spike_pacer.inferred_osc_handler)
 
     dispatcher_max = Dispatcher()
     dispatcher_max.map("/COLOR_INDEX", spike_pacer.max_control_color)
@@ -1048,6 +1142,11 @@ async def init_main():
     )
     server_latent = AsyncIOOSCUDPServer(
         (LOCAL_SERVER, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
+    )
+    server_inferred_latent = AsyncIOOSCUDPServer(
+        (LOCAL_SERVER, INFERRED_LATENT_PORT),
+        dispatcher_python,
+        asyncio.get_event_loop(),
     )
     server_max = AsyncIOOSCUDPServer(
         (LOCAL_SERVER, MAX_CONTROL_PORT), dispatcher_max, asyncio.get_event_loop()

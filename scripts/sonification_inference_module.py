@@ -102,7 +102,7 @@ class LatentInference:
         torch.set_default_dtype(default_dtype)
 
         """hyperparameters"""
-        n_inputs = 2
+        n_inputs = 4
         n_latents = 8
         n_hidden_current_obs = 128
         n_samples = 25
@@ -110,29 +110,36 @@ class LatentInference:
 
         batch_sz = 256
         n_epochs = 250
-        blues = cm.get_cmap("Blues", n_samples)
 
         """data params"""
         n_trials = 1000
         n_neurons = 100
-        n_time_bins = 200
+        n_time_bins = 100
 
-        def B(u):
-            Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
-                default_dtype
-            )
-            for i in range(4):
-                if i % 2 == 1:
-                    Bu[:, :, 2 * i] = u[:, :, 0]
-                    Bu[:, :, 2 * i + 1] = u[:, :, 1]
-            return Bu
-
-        # B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
-        #     False
-        # )
-        # B.weight.data = torch.tensor(
-        #     [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
-        # ).type(default_dtype)
+        # def B(u):
+        #     Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
+        #         default_dtype
+        #     )
+        #     for i in range(4):
+        #         if i % 2 == 1:
+        #             Bu[:, :, 2 * i] = u[:, :, 0]
+        #             Bu[:, :, 2 * i + 1] = u[:, :, 1]
+        #     return Bu
+        B = torch.nn.Linear(
+            n_inputs, n_latents, bias=False, device=device
+        ).requires_grad_(False)
+        B.weight.data = torch.tensor(
+            [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1],
+            ]
+        ).type(default_dtype)
         Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
@@ -140,23 +147,6 @@ class LatentInference:
             torch.tensor([0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0], device=device)
             .requires_grad_(False)
             .type(default_dtype)
-        )
-
-        """generate input and latent/observations"""
-        u = torch.zeros((n_trials, n_time_bins, n_inputs), device=device)
-        y_gt = torch.zeros((n_trials, n_time_bins, n_neurons), device=device)
-        z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
-        for i in range(n_trials):
-            print(f"trial: {i}")
-            y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
-
-        y_train_dataset = torch.utils.data.TensorDataset(
-            y_gt,
-            u,
-            z_gt,
-        )
-        train_dataloader = torch.utils.data.DataLoader(
-            y_train_dataset, batch_size=batch_sz, shuffle=True
         )
 
         """approximation pdf"""
@@ -222,7 +212,7 @@ class LatentInference:
         nl_filter = NonlinearFilter(dynamics_mod, initial_condition_pdf, device)
 
         """sequence vae"""
-        ssm = FullRankNonlinearStateSpaceModelFilter(
+        self.ssm = FullRankNonlinearStateSpaceModelFilter(
             dynamics_mod,
             approximation_pdf,
             likelihood_pdf,
@@ -232,7 +222,7 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(torch.load(f"data/ssm_state2_dict_epoch_10.pt"))
+        self.ssm.load_state_dict(torch.load(f"data/ssm_state_cart_dict.pt"))
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 
@@ -263,12 +253,36 @@ class LatentInference:
             self.input[0, :] = torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(
                 torch.float32
             )
+            self.cart_input = torch.zeros((1, 4))
+            for i in range(4):
+                if i == 1:
+                    r = np.sqrt(
+                        TRAJECTORY[0][2 * i] ** 2 + TRAJECTORY[0][2 * i + 1] ** 2
+                    )
+                    theta = np.arctan2(TRAJECTORY[0][2 * i + 1], TRAJECTORY[0][2 * i])
+                    x, y = r * np.cos(theta), r * np.sin(theta)
+                    x_n, y_n = (r - INPUT_Y[0]) * np.cos(theta + INPUT_X[0]), (
+                        r - INPUT_Y[0]
+                    ) * np.sin(theta + INPUT_X[0])
+                    self.cart_input[0, 0] = torch.from_numpy(x_n) - torch.from_numpy(x)
+                    self.cart_input[0, 1] = torch.from_numpy(y_n) - torch.from_numpy(y)
+                elif i == 3:
+                    r = np.sqrt(
+                        TRAJECTORY[0][2 * i] ** 2 + TRAJECTORY[0][2 * i + 1] ** 2
+                    )
+                    theta = np.arctan2(TRAJECTORY[0][2 * i + 1], TRAJECTORY[0][2 * i])
+                    x, y = r * np.cos(theta), r * np.sin(theta)
+                    x_n, y_n = (r - INPUT_Y[0]) * np.cos(theta + INPUT_X[0]), (
+                        r - INPUT_Y[0]
+                    ) * np.sin(theta + INPUT_X[0])
+                    self.cart_input[0, 2] = torch.from_numpy(x_n) - torch.from_numpy(x)
+                    self.cart_input[0, 3] = torch.from_numpy(y_n) - torch.from_numpy(y)
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 100)
+                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.cart_input, 100)
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.input, 100, self.inferred
+                    self.sum_spikes, self.cart_input, 100, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1

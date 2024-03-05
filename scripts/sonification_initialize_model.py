@@ -148,14 +148,32 @@ def generate_sample(n_time_bins):
         sum_y_fast[i, :] = np.sum(y_fast[i * 20 : (i + 1) * 20, :], axis=0)
         sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
 
-    u_cart = np.zeros_like(u_polar)
+    z_fast = z_fast[::20]
+    z_slow = z_slow[::20]
+    u_cart = np.zeros((n_time_bins, 4))
 
-    u_cart[:, 0] = u_polar[:, 0] * np.cos(u_polar[:, 1])
-    u_cart[:, 1] = u_polar[:, 0] * np.sin(u_polar[:, 1])
+    for j in range(n_time_bins):
+        r = np.sqrt(z_fast[j, 2] ** 2 + z_fast[j, 3] ** 2)
+        theta = np.arctan2(z_fast[j, 3], z_fast[j, 2])
+        x, y = r * np.cos(theta), r * np.sin(theta)
+        x_n, y_n = (r - u_polar[j, 1]) * np.cos(theta + u_polar[j, 0]), (
+            r - u_polar[j, 1]
+        ) * np.sin(theta + u_polar[j, 0])
+        u_cart[j, 0] = x_n - x
+        u_cart[j, 1] = y_n - y
+
+        r = np.sqrt(z_slow[j, 2] ** 2 + z_slow[j, 3] ** 2)
+        theta = np.arctan2(z_slow[j, 3], z_slow[j, 2])
+        x, y = r * np.cos(theta), r * np.sin(theta)
+        x_n, y_n = (r - u_polar[j, 1]) * np.cos(theta + u_polar[j, 0]), (
+            r - u_polar[j, 1]
+        ) * np.sin(theta + u_polar[j, 0])
+        u_cart[j, 2] = x_n - x
+        u_cart[j, 3] = y_n - y
 
     return (
         torch.tensor(np.hstack([sum_y_fast, sum_y_slow])),
-        torch.tensor(np.hstack([z_fast[::20], z_slow[::20]])),
+        torch.tensor(np.hstack([z_fast, z_slow])),
         torch.tensor(u_cart * 20).type(torch.float32),
     )
 
@@ -170,7 +188,7 @@ def train_network():
     torch.set_default_dtype(default_dtype)
 
     """hyperparameters"""
-    n_inputs = 2
+    n_inputs = 4
     n_latents = 8
     n_hidden_current_obs = 128
     n_samples = 25
@@ -183,24 +201,32 @@ def train_network():
     """data params"""
     n_trials = 1000
     n_neurons = 100
-    n_time_bins = 200
+    n_time_bins = 100
 
-    def B(u):
-        Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
-            default_dtype
-        )
-        for i in range(4):
-            if i % 2 == 1:
-                Bu[:, :, 2 * i] = u[:, :, 0]
-                Bu[:, :, 2 * i + 1] = u[:, :, 1]
-        return Bu
-
-    # B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
-    #     False
-    # )
-    # B.weight.data = torch.tensor(
-    #     [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
-    # ).type(default_dtype)
+    # def B(u):
+    #     Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
+    #         default_dtype
+    #     )
+    #     for i in range(4):
+    #         if i % 2 == 1:
+    #             Bu[:, :, 2 * i] = u[:, :, 0]
+    #             Bu[:, :, 2 * i + 1] = u[:, :, 1]
+    #     return Bu
+    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
+        False
+    )
+    B.weight.data = torch.tensor(
+        [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ]
+    ).type(default_dtype)
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
@@ -264,8 +290,8 @@ def train_network():
                 else theta + 2 * np.pi * 0.5 * bin_sz
             )
 
-            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
-            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
+            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new) / 2
+            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new) / 2
         return Ax
 
     dynamics_fn = A

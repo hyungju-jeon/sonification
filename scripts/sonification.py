@@ -7,7 +7,7 @@ subprocesses = dict()
 
 
 def worker(file):
-    subprocesses[file] = subprocess.Popen(["python", file, "0"])
+    subprocesses[file] = subprocess.Popen(["python", file])
 
 
 if __name__ == "__main__":
@@ -15,7 +15,7 @@ if __name__ == "__main__":
         "./scripts/sonification_main.py",
         "./scripts/sonification_input_module.py",
         "./scripts/sonification_visualize_module.py",
-        # "./scripts/sonification_visualization_module.py",
+        "./scripts/sonification_inference_module.py",
     ]
     prcesses = dict()
 

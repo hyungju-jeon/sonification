@@ -1,22 +1,27 @@
-import sys
-
-import signal
-from tkinter import SE
-import numpy as np
 import asyncio
+import signal
+import sys
+import threading
+from tkinter import SE
+
+import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-
+from PyQt5.QtCore import QTimer, QTimerEvent, pyqtSignal
+from PyQt5.QtWidgets import QApplication, QDesktopWidget, QGraphicsView, QGridLayout
 from pyqtgraph.Qt import QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QGraphicsView, QDesktopWidget, QGridLayout
-from PyQt5.QtCore import QTimerEvent, QTimer
-from PyQt5.QtCore import pyqtSignal
-
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
+from matplotlib.colors import LinearSegmentedColormap
 from sonification_communication_module import *
 
-import threading
+cdict = {
+    "red": [[0.0, 0.2, 0.2], [1.0, 1.0, 1.0]],
+    "green": [[0.0, 1.0, 1.0], [1.0, 0.7, 0.7]],
+    "blue": [[0.0, 0.2, 0.2], [1.0, 0.0, 0.0]],
+}
+newcmp = LinearSegmentedColormap("testCmap", segmentdata=cdict, N=256)
+RGBA = np.round(newcmp(np.linspace(0, 1, 256)) * 255).astype(int)
 
 packet_count = 0
 num_neurons = 100
@@ -368,6 +373,10 @@ class RasterWithTrace3DVisualizer:
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
             QApplication.instance().exec_()
 
+    def update_lut(self, color):
+        for i in range(256):
+            self.lut[i] = [color[0], color[1], color[2], i]
+
     def update(self):
         if self.frame >= self.L + self.buffer:
             self.firing_rates = np.roll(self.firing_rates, -self.buffer, axis=0)
@@ -466,6 +475,11 @@ class SpikeBall3DVisualizer:
         self.color = np.repeat(
             np.array([0.2, 1, 0.2, 0.4])[np.newaxis, :], num_neurons, axis=0
         )
+        self.color[raster_sort_idx % 50 > 25] = [0.7, 0.7, 0.7, 0.4]
+
+    def update_color(self, color):
+        self.color[:, :3] = color[:3] / 255
+        print(self.color[0, :3])
         self.color[raster_sort_idx % 50 > 25] = [0.7, 0.7, 0.7, 0.4]
 
     def update(self):
@@ -969,6 +983,18 @@ class SpikePacer(QtCore.QObject):
         exec("global " + address[1:])
         exec(address[1:] + "[0] = args[0]")
 
+    def max_control_color(self, address, *args):
+        COLOR_INDEX[0] = args[0]
+        color = RGBA[int(COLOR_INDEX[0])]
+        vis_wall_raster_left.update_lut(color)
+        vis_wall_raster_right.update_lut(color)
+        vis_wall_raster_top.update_lut(color)
+        vis_wall_raster_bottom.update_lut(color)
+        vis_ceiling_raster.update_lut(color)
+        vis_wall_spike.update_color(color)
+        # vis_wall_true_latent.update_lut(color)
+        # vis_ceiling_true_latent.update_lut(color)
+
 
 spike_pacer = SpikePacer(
     spike_fcn=[
@@ -994,6 +1020,7 @@ async def init_main():
     dispatcher_python.map("/TRAJECTORY", spike_pacer.latent_osc_handler)
 
     dispatcher_max = Dispatcher()
+    dispatcher_max.map("/COLOR_INDEX", spike_pacer.max_control_color)
     dispatcher_max.map("/DISC_RADIUS_INC", spike_pacer.max_control_osc_handler)
     dispatcher_max.map("/SPIKE_ORGANIZATION", spike_pacer.max_control_osc_handler)
     dispatcher_max.map("/WALL_SPIKE", spike_pacer.max_switch_wall_spike)

@@ -302,7 +302,7 @@ def train_network():
                         z_s[:, :, :, 2 * i + 1]
                     )
 
-                torch.save(ssm.state_dict(), f"results/ssm_state2_dict_epoch_{t}.pt")
+                torch.save(ssm.state_dict(), f"results/ssm_state_dict_big_epoch_{t}.pt")
                 fig, axs = plt.subplots(1, n_latents, figsize=(20, 5))
                 [
                     axs[i].plot(z_c[j, 0, :, i], color=blues(j), alpha=0.5)
@@ -319,7 +319,7 @@ def train_network():
                 plt.close()
                 # plt.show()
 
-    torch.save(ssm.state_dict(), f"results/ssm_state2_dict_epoch_{n_epochs}.pt")
+    torch.save(ssm.state_dict(), f"results/ssm_state_dict_big_epoch_{n_epochs}.pt")
 
     """real-time test"""
     z_f = []

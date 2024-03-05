@@ -42,7 +42,7 @@ from utils.ndlib.dynlib import *
 
 # ---------------------------------------------------------------- #
 # Common Parameters
-dt = 10e-3  # 1ms for dynamic system update
+dt = 20e-3  # 1ms for dynamic system update
 SPIKES = [np.zeros((100, 1))]
 INPUT_X = [0]
 INPUT_Y = [0]
@@ -182,12 +182,13 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(torch.load(f"data/ssm_state_dict_big.pt"))
+        self.ssm.load_state_dict(torch.load(f"data/ssm_state_dict_big_epoch_20.pt"))
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 
         self.MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
         self.LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERRED_LATENT_PORT)
+        self.prev = np.zeros(8)
 
     def update_spikes(self, spikes):
         self.spikes[-1] = spikes
@@ -215,10 +216,10 @@ class LatentInference:
             )
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 100)
+                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 10)
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.input, 100, self.inferred
+                    self.sum_spikes, self.input, 10, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1

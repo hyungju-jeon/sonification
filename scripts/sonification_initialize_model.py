@@ -290,8 +290,8 @@ def train_network():
                 else theta + 2 * np.pi * 0.5 * bin_sz
             )
 
-            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new) / 2
-            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new) / 2
+            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
         return Ax
 
     dynamics_fn = A

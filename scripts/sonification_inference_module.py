@@ -241,7 +241,7 @@ class LatentInference:
             result_cart[2 * i + 1] = result_polar[2 * i] * np.sin(
                 result_polar[2 * i + 1]
             )
-        return result_cart
+        return result_polar
 
     async def start(self):
         await self.setup_server()
@@ -279,10 +279,10 @@ class LatentInference:
                     self.cart_input[0, 3] = torch.from_numpy(y_n) - torch.from_numpy(y)
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.cart_input, 100)
+                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.cart_input, 10)
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.cart_input, 100, self.inferred
+                    self.sum_spikes, self.cart_input, 10, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1

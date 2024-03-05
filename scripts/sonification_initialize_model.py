@@ -143,7 +143,6 @@ def generate_sample(n_time_bins):
 
     sum_y_fast = np.zeros((n_time_bins, 50))
     sum_y_slow = np.zeros((n_time_bins, 50))
-    sum_u = np.zeros((n_time_bins, 2))
     for i in range(n_time_bins):
         sum_y_fast[i, :] = np.sum(y_fast[i * 20 : (i + 1) * 20, :], axis=0)
         sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
@@ -257,9 +256,15 @@ def train_network():
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    C = LinearPolarToCartesian(
-        n_latents, n_neurons, 4, loading=loading, bias=b, device=device
+    # C = LinearPolarToCartesian(
+    #     n_latents, n_neurons, 4, loading=loading, bias=b, device=device
+    # )
+    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(
+        False
     )
+    C.weight.data = torch.tensor(loading.T).type(torch.float32)
+    C.bias.data = torch.tensor(b).type(torch.float32)
+
     likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz, device=device)
 
     """dynamics module"""
@@ -290,8 +295,8 @@ def train_network():
                 else theta + 2 * np.pi * 0.5 * bin_sz
             )
 
-            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new) / 2
-            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new) / 2
+            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
         return Ax
 
     dynamics_fn = A
@@ -361,7 +366,9 @@ def train_network():
                         z_s[:, :, :, 2 * i + 1]
                     )
 
-                torch.save(ssm.state_dict(), f"results/ssm_state2_dict_epoch_{t}.pt")
+                torch.save(
+                    ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt"
+                )
                 fig, axs = plt.subplots(1, n_latents, figsize=(20, 5))
                 [
                     axs[i].plot(z_s[j, 0, :, i], color=blues(j), alpha=0.5)
@@ -378,7 +385,9 @@ def train_network():
                 plt.close()
                 # plt.show()
 
-    torch.save(ssm.state_dict(), f"results/ssm_cart_state_dict_epoch_{n_epochs}.pt")
+    torch.save(
+        ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt"
+    )
 
     """real-time test"""
     z_f = []

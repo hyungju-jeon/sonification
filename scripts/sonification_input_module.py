@@ -64,7 +64,7 @@ class MotionEnergy:
 
             if self.verbose:
                 print(
-                    f"Motion Energy X: {motion_energy_x}, Motion Energy Y: {motion_energy_y} took {(time.perf_counter_ns() - start_time)/1e6} ms"
+                    f"Motion Energy X: {motion_energy_x}, Motion Energy Y: {motion_energy_y} took {(time.perf_counter_ns() - start_t)/1e6} ms"
                 )
 
             # Display current frame

@@ -121,23 +121,23 @@ def initialize_loading_matrix():
         np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
 
 
-def generate_sample():
+def generate_sample(n_time_bins):
     reference_cycle = limit_circle(**CYCLE_FAST)
     perturb_cycle = limit_circle(**CYCLE_FAST)
     coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    z_fast = coupled_cycle.generate_trajectory(20000)
+    z_fast = coupled_cycle.generate_trajectory(20 * n_time_bins)
     y_fast = np.exp(z_fast @ C_fast + b_fast)
-    # Y_fast is size of (20000, 50) moving average of size 20 with step size 20 along axis 0
-    y_fast = np.mean(y_fast.reshape(50, -1, 20), axis=2)
+    # Y_fast is size of (20*n_time_bins, 50) moving average of size 20 with step size 20 along axis 0
+    y_fast = np.mean(y_fast.reshape(20, 50, -1), axis=0).reshape(n_time_bins, 50)
 
     reference_cycle = limit_circle(**CYCLE_SLOW)
     perturb_cycle = limit_circle(**CYCLE_SLOW)
     coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
     z_slow = coupled_cycle.generate_trajectory(20000)
     y_slow = np.exp(z_fast @ C_slow + b_slow)
-    y_slow = np.mean(y_slow.reshape(50, -1, 20), axis=2)
+    y_slow = np.mean(y_slow.reshape(20, 50, -1), axis=0).reshape(n_time_bins, 50)
 
-    return torch.tensor(np.vstack([y_fast, y_slow]).T), torch.tensor(
+    return torch.tensor(np.hstack([y_fast, y_slow])), torch.tensor(
         np.hstack([z_fast[::20], z_slow[::20]])
     )
 
@@ -184,7 +184,7 @@ def train_network():
     z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
     for i in range(n_trials):
         print(f"trial: {i}")
-        y_gt[i], z_gt[i] = generate_sample()
+        y_gt[i], z_gt[i] = generate_sample(n_time_bins)
 
     y_train_dataset = torch.utils.data.TensorDataset(
         y_gt,
@@ -333,12 +333,12 @@ if __name__ == "__main__":
     m_0 = torch.zeros(n_latents, device=device).requires_grad_(False)
 
     """generate input and latent/observations"""
-    u = torch.rand((n_trials, n_time_bins, n_inputs), device=device) * 0
+    u = torch.rand((n_trials, n_time_bins, n_inputs), device=device) * bin_sz
     y_gt = torch.zeros((n_trials, n_time_bins, n_neurons), device=device)
     z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
     for i in range(n_trials):
         print(f"trial: {i}")
-        y_gt[i], z_gt[i] = generate_sample()
+        y_gt[i], z_gt[i] = generate_sample(n_time_bins)
 
     y_train_dataset = torch.utils.data.TensorDataset(
         y_gt,
@@ -439,7 +439,7 @@ if __name__ == "__main__":
                 ]
                 [axs[i].set_box_aspect(1.0) for i in range(n_latents)]
                 [axs[i].set_title(f"dim {i}") for i in range(n_latents)]
-                # plt.show()
+                plt.show()
 
     torch.save(ssm.state_dict(), f"results/ssm_state_dict_epoch_{n_epochs}.pt")
 

@@ -44,6 +44,7 @@ from utils.ndlib.dynlib import *
 # Common Parameters
 dt = 10e-3  # 1ms for dynamic system update
 SPIKES = [np.zeros((100, 1))]
+TRAJECTORY = [np.zeros((8, 1))]
 INPUT_X = [0]
 INPUT_Y = [0]
 loading_matrix_fast_name = (
@@ -86,10 +87,12 @@ class LatentInference:
         # Load trained network
         self.verbose = verbose
         self.spikes = np.zeros((20, 100))
-        DISPATCHER.map("/SPIKES", self.latent_to_inference_osc_handler)
+        DISPATCHER.map("/SPIKES", self.spike_to_inference_osc_handler)
         DISPATCHER.map("/MOTION_ENERGY", self.camera_to_latent_osc_handler)
+        DISPATCHER.map("/TRAJECTORY", self.latent_to_inference_osc_handler)
         self.t = 0
         self.inferred = None
+
         bin_sz = 20e-3
         device = "cpu"
         data_device = "cpu"
@@ -106,18 +109,30 @@ class LatentInference:
         rank_y = n_latents
 
         batch_sz = 256
+        n_epochs = 250
+        blues = cm.get_cmap("Blues", n_samples)
 
         """data params"""
         n_trials = 1000
         n_neurons = 100
-        n_time_bins = 100
+        n_time_bins = 200
 
-        B = torch.nn.Linear(
-            n_inputs, n_latents, bias=False, device=device
-        ).requires_grad_(False)
-        B.weight.data = torch.tensor(
-            [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
-        ).type(default_dtype)
+        def B(u):
+            Bu = torch.ones(u.shape[0], u.shape[1], n_latents, device=device).type(
+                default_dtype
+            )
+            for i in range(4):
+                if i % 2 == 1:
+                    Bu[:, :, 2 * i] = u[:, :, 0]
+                    Bu[:, :, 2 * i + 1] = u[:, :, 1]
+            return Bu
+
+        # B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
+        #     False
+        # )
+        # B.weight.data = torch.tensor(
+        #     [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
+        # ).type(default_dtype)
         Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
@@ -125,6 +140,23 @@ class LatentInference:
             torch.tensor([0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0], device=device)
             .requires_grad_(False)
             .type(default_dtype)
+        )
+
+        """generate input and latent/observations"""
+        u = torch.zeros((n_trials, n_time_bins, n_inputs), device=device)
+        y_gt = torch.zeros((n_trials, n_time_bins, n_neurons), device=device)
+        z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
+        for i in range(n_trials):
+            print(f"trial: {i}")
+            y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
+
+        y_train_dataset = torch.utils.data.TensorDataset(
+            y_gt,
+            u,
+            z_gt,
+        )
+        train_dataloader = torch.utils.data.DataLoader(
+            y_train_dataset, batch_size=batch_sz, shuffle=True
         )
 
         """approximation pdf"""
@@ -138,16 +170,34 @@ class LatentInference:
 
         """dynamics module"""
 
+        # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
+        # def A(x):
+        #     Ax = torch.zeros_like(x)
+        #     Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
+        #     Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
+        #     Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
+        #     Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
+        #     Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
+        #     Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
+        #     Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
+        #     Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+        #     return Ax
+
         def A(x):
             Ax = torch.zeros_like(x)
-            Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
-            Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
-            Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
-            Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
-            Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
-            Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
-            Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
-            Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+            for i in range(4):
+                r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
+                theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
+
+                r_new = r + r * (1 - r**2) * bin_sz
+                theta_new = (
+                    theta + 2 * np.pi * 1.5 * bin_sz
+                    if i < 2
+                    else theta + 2 * np.pi * 0.5 * bin_sz
+                )
+
+                Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+                Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
             return Ax
 
         dynamics_fn = A
@@ -172,7 +222,7 @@ class LatentInference:
         nl_filter = NonlinearFilter(dynamics_mod, initial_condition_pdf, device)
 
         """sequence vae"""
-        self.ssm = FullRankNonlinearStateSpaceModelFilter(
+        ssm = FullRankNonlinearStateSpaceModelFilter(
             dynamics_mod,
             approximation_pdf,
             likelihood_pdf,
@@ -182,7 +232,7 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(torch.load(f"data/ssm_state_dict.pt"))
+        self.ssm.load_state_dict(torch.load(f"data/ssm_state2_dict_epoch_10.pt"))
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 
@@ -254,7 +304,7 @@ class LatentInference:
         except:
             print("Address already in use")
 
-    def latent_to_inference_osc_handler(self, address, *args):
+    def spike_to_inference_osc_handler(self, address, *args):
         self.update_spikes(args[0])
         SPIKES[0] = args[0]
         if self.verbose:
@@ -266,13 +316,10 @@ class LatentInference:
         if self.verbose:
             print(f"Received update for INPUT_X, INPUT_Y : {args}")
 
-
-async def init_main():
-    inference = LatentInference()
-    await asyncio.gather(
-        inference.start(),
-        inferred_latent_sending_loop(ms_to_ns(200), inference, verbose=True),
-    )
+    def latent_to_inference_osc_handler(self, address, *args):
+        TRAJECTORY[0] = np.array(args)
+        if self.verbose:
+            print(f"Received update for TRAJECTORY : {args}")
 
 
 if __name__ == "__main__":

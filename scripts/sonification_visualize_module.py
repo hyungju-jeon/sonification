@@ -754,7 +754,7 @@ class LatentOrbitVisualizer:
             self.data[:, self.frame] = LATENT[0]
         if self.frame % 10 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
-            for i in range(0, 3):
+            for i in range(1,7,2):
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window])
@@ -834,7 +834,7 @@ class InferredOrbitVisualizer:
             self.data[:, self.frame] = INFERRED[0]
         if self.frame % 1 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
-            for i in range(0, 3):
+            for i in range(1, 7, 2):
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window])

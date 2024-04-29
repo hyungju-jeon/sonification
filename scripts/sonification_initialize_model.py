@@ -83,7 +83,7 @@ def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     reference_cycle = limit_circle(**cycle_info)
     perturb_cycle = limit_circle(**cycle_info)
     two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    latent_trajectory = two_cycle.generate_trajectory(10000) * 1e-3
+    latent_trajectory = two_cycle.generate_trajectory(10000)
     target_rate = 10
 
     theta = np.random.uniform(0, 2 * np.pi, num_neurons)
@@ -121,7 +121,6 @@ def initialize_loading_matrix(override=True):
     Returns:
         None
     """
-
     num_neurons = 50
     loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
     loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
@@ -130,13 +129,13 @@ def initialize_loading_matrix(override=True):
         loading_matrix_slow_name
     )) or override:
         C_fast, b_fast = generate_loading_matrix(
-            num_neurons, CYCLE_FAST, scale=500, noise=0.3
+            num_neurons, CYCLE_FAST, scale=50, noise=0.3
         )
 
         np.savez(loading_matrix_fast_name, C=C_fast, b=b_fast)
 
         C_slow, b_slow = generate_loading_matrix(
-            num_neurons, CYCLE_SLOW, scale=500, noise=0.3
+            num_neurons, CYCLE_SLOW, scale=3, noise=0.3
         )
         np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
 

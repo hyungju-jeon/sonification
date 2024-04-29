@@ -46,7 +46,7 @@ async def busy_timer(duration):
             break
 
 
-async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
+async def true_latent_sending_loop(interval_ns, slow_block, verbose=False):
     """
     Sends packets of data to Max/MSP at regular intervals.
 
@@ -59,26 +59,21 @@ async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
     MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
     LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
-    INFERENEC_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
+    INFERENCE_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
             "/TRAJECTORY",
-            np.concatenate(
-                [fask_block.get_state(), slow_block.get_state()], axis=0
-            ).tolist(),
+            np.concatenate([slow_block.get_state()], axis=0).tolist(),
         )
+
         LOCAL_OSCsender.send_message(
             "/TRAJECTORY",
-            np.concatenate(
-                [fask_block.get_state(), slow_block.get_state()], axis=0
-            ).tolist(),
+            np.concatenate([slow_block.get_state()], axis=0).tolist(),
         )
-        INFERENEC_OSCsender.send_message(
+        INFERENCE_OSCsender.send_message(
             "/TRAJECTORY",
-            np.concatenate(
-                [fask_block.get_state(), slow_block.get_state()], axis=0
-            ).tolist(),
+            np.concatenate([slow_block.get_state()], axis=0).tolist(),
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
@@ -90,7 +85,46 @@ async def true_latent_sending_loop(interval_ns, fask_block, slow_block, verbose=
         await busy_timer(interval_ns)
 
 
-async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=False):
+async def fake_latent_sending_loop(interval_ns, slow_block, verbose=False):
+    """
+    Sends packets of data to Max/MSP at regular intervals.
+
+    Args:
+        interval (float): The interval between each packet sending.
+
+    Returns:
+        None
+    """
+    # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
+    MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+    LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERRED_LATENT_PORT)
+    INFERENCE_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
+    while True:
+        start_t = time.perf_counter_ns()
+        MAX_OSCsender.send_message(
+            "/INFERRED_TRAJECTORY",
+            np.concatenate(
+                [slow_block.get_state() + np.random.randn(4) * 0.02], axis=0
+            ).tolist(),
+        )
+
+        LOCAL_OSCsender.send_message(
+            "/INFERRED_TRAJECTORY",
+            np.concatenate(
+                [slow_block.get_state() + np.random.randn(4) * 0.02], axis=0
+            ).tolist(),
+        )
+        elapsed_time = time.perf_counter_ns() - start_t
+        sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
+
+        if sleep_duration == 0 and verbose:
+            print(
+                f"Fake Trajectory Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
+            )
+        await busy_timer(interval_ns)
+
+
+async def phase_diff_sending_loop(interval_ns, slow_block, verbose=False):
     """
     Sends packets of data to Max/MSP at regular intervals.
 
@@ -106,7 +140,7 @@ async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
             "/PHASE_DIFF",
-            [fask_block.get_phase_diff(), slow_block.get_phase_diff()],
+            [slow_block.get_phase_diff()],
         )
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
@@ -118,7 +152,7 @@ async def phase_diff_sending_loop(interval_ns, fask_block, slow_block, verbose=F
         await busy_timer(interval_ns)
 
 
-async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False):
+async def spike_sending_loop(interval_ns, slow_block, verbose=False):
     """
         Sends spikes to Max/MSP at regular intervals.
 
@@ -135,7 +169,6 @@ async def spike_sending_loop(interval_ns, fast_block, slow_block, verbose=False)
         start_t = time.perf_counter_ns()
         msg = np.concatenate(
             [
-                fast_block.y[0] > 0,
                 slow_block.y[0] > 0,
             ],
             axis=0,

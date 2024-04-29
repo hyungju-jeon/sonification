@@ -26,8 +26,8 @@ RGBA = np.round(newcmp(np.linspace(0, 1, 256)) * 255).astype(int)
 packet_count = 0
 num_neurons = 100
 SPIKES = [np.zeros(num_neurons)]
-LATENT = [np.zeros(8)]
-INFERRED = [np.zeros(8)]
+LATENT = [np.zeros(4)]
+INFERRED = [np.zeros(4)]
 
 ASPECT_RATIO = 0.7
 GRID_SIZE_WIDTH = 100
@@ -35,7 +35,7 @@ GRID_SIZE_HEIGHT = 50
 
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
-LATENT_DECAY_FACTOR = [0.99]
+LATENT_DECAY_FACTOR = [0.995]
 RASTER_DECAY_FACTOR = [0.1]
 
 WALL_RASTER_LEFT = [0]
@@ -553,7 +553,7 @@ class LatentCycleVisualizer:
         self.L = 1000
         self.buffer = 1000
         self.latent = np.zeros(
-            (self.L + self.buffer, 8)
+            (self.L + self.buffer, 4)
         )  # Initialize firing rates for each neuron
         self.decay_factor = DISC_DECAY_FACTOR[0]
         self.x = x_index
@@ -569,9 +569,9 @@ class LatentCycleVisualizer:
         self.L = np.where(np.array([x[-1] for x in color]) < 0.1)[0][0]
         color = color[: self.L]
         color = color[::-1]
-        self.data = np.zeros((8, self.L + self.buffer))
+        self.data = np.zeros((4, self.L + self.buffer))
 
-        self.z = [x for x in range(8) if x not in [self.x, self.y]]
+        self.z = [x for x in range(4) if x not in [self.x, self.y]]
         for i in range(6):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
@@ -630,9 +630,9 @@ class LatentOrbitCeilingVisualizer:
         self.L = 1000
         self.buffer = 1000
         self.latent = np.zeros(
-            (self.L + self.buffer, 8)
+            (self.L + self.buffer, 4)
         )  # Initialize firing rates for each neuron
-        self.decay_factor = LATENT_DECAY_FACTOR[0]
+        self.decay_factor = 0.999
         self.x = x_index
         self.y = y_index
         self.traces = dict()
@@ -641,12 +641,12 @@ class LatentOrbitCeilingVisualizer:
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
-        self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
+        # self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
         self.color = self.color[: self.L]
         self.color = self.color[::-1]
-        self.data = np.zeros((8, self.L + self.buffer))
+        self.data = np.zeros((4, self.L + self.buffer))
 
-        self.z = [x for x in range(8) if x not in [self.x]]
+        self.z = [x for x in range(4) if x not in [self.x]]
         for i in range(7):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
@@ -706,10 +706,10 @@ class LatentOrbitVisualizer:
         else:
             self.plot_widget = widget
 
-        self.L = 1000
-        self.buffer = 1000
+        self.L = 1500
+        self.buffer = 1500
         self.latent = np.zeros(
-            (self.L + self.buffer, 8)
+            (self.L + self.buffer, 4)
         )  # Initialize firing rates for each neuron
         self.decay_factor = LATENT_DECAY_FACTOR[0]
         self.x = x_index
@@ -720,12 +720,12 @@ class LatentOrbitVisualizer:
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
-        self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
+        # self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
         self.color = self.color[: self.L]
         self.color = self.color[::-1]
-        self.data = np.zeros((8, self.L + self.buffer))
+        self.data = np.zeros((4, self.L + self.buffer))
 
-        self.z = [x for x in range(8) if x not in [self.x]]
+        self.z = [x for x in range(4) if x not in [self.x]]
         for i in range(7):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
@@ -754,7 +754,7 @@ class LatentOrbitVisualizer:
             self.data[:, self.frame] = LATENT[0]
         if self.frame % 10 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
-            for i in range(1,7,2):
+            for i in range(0, 3, 2):
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window])
@@ -786,12 +786,12 @@ class InferredOrbitVisualizer:
         else:
             self.plot_widget = widget
 
-        self.L = 1000
-        self.buffer = 1000
+        self.L = 1500
+        self.buffer = 1500
         self.latent = np.zeros(
-            (self.L + self.buffer, 8)
+            (self.L + self.buffer, 4)
         )  # Initialize firing rates for each neuron
-        self.decay_factor = LATENT_DECAY_FACTOR[0] ** 2
+        self.decay_factor = LATENT_DECAY_FACTOR[0]
         self.x = x_index
         self.y = y_index
         self.traces = dict()
@@ -800,12 +800,12 @@ class InferredOrbitVisualizer:
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
-        self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
+        # self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
         self.color = self.color[: self.L]
         self.color = self.color[::-1]
-        self.data = np.zeros((8, self.L + self.buffer))
+        self.data = np.zeros((4, self.L + self.buffer))
 
-        self.z = [x for x in range(8) if x not in [self.x]]
+        self.z = [x for x in range(4) if x not in [self.x]]
         for i in range(7):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
@@ -834,7 +834,7 @@ class InferredOrbitVisualizer:
             self.data[:, self.frame] = INFERRED[0]
         if self.frame % 1 == 0 and self.frame > 0 and self.visible:
             slice_window = slice(np.fmax(0, self.frame - self.L), self.frame)
-            for i in range(1, 7, 2):
+            for i in range(0, 3, 2):
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window])
@@ -852,16 +852,13 @@ class InferredOrbitVisualizer:
 
 
 # -------------------------------------------------------------------------------
-loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
 loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
 
-param = np.load(loading_matrix_fast_name, allow_pickle=True)
-C_fast, b_fast = np.hstack(param["C"]), param["b"]
 param = np.load(loading_matrix_slow_name, allow_pickle=True)
 C_slow, b_slow = np.hstack(param["C"]), param["b"]
 
-C = np.hstack([C_fast, C_slow])
-b = np.vstack([b_fast, b_slow]).flatten()
+C = np.hstack([C_slow])
+b = np.vstack([b_slow]).flatten()
 theta = np.arctan2(C[1, :], C[0, :])
 
 raster_sort_idx = np.argsort(theta)

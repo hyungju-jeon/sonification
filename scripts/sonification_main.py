@@ -26,7 +26,7 @@ CYCLE_FAST = {
 CYCLE_SLOW = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * .2,
+    "w": 2 * np.pi * 0.2,
     "Q": None,
     "dt": dt,
 }
@@ -52,37 +52,22 @@ def ms_to_ns(ms):
 
 
 async def init_main():
-    loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
     loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
-    param = np.load(loading_matrix_fast_name, allow_pickle=True)
-    C_fast, b_fast = param["C"], param["b"]
     param = np.load(loading_matrix_slow_name, allow_pickle=True)
     C_slow, b_slow = param["C"], param["b"]
 
-    fast_latent_block = LatentModule.LatentDynamics(CYCLE_FAST, verbose=False)
     slow_latent_block = LatentModule.LatentDynamics(CYCLE_SLOW, verbose=False)
-    fast_spike_block = LatentModule.SpikeGenerator(
-        C_fast, b_fast, dt, latent_block=fast_latent_block
-    )
-
     slow_spike_block = LatentModule.SpikeGenerator(
         C_slow, b_slow, dt, latent_block=slow_latent_block
     )
 
     await asyncio.gather(
-        fast_latent_block.start(),
         slow_latent_block.start(),
-        fast_spike_block.start(SPIKES_FAST),
         slow_spike_block.start(SPIKES_SLOW),
-        spike_sending_loop(
-            ms_to_ns(1), fast_spike_block, slow_spike_block, verbose=False
-        ),
-        true_latent_sending_loop(
-            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
-        ),
-        phase_diff_sending_loop(
-            ms_to_ns(1), fast_latent_block, slow_latent_block, verbose=False
-        ),
+        spike_sending_loop(ms_to_ns(1), slow_spike_block, verbose=False),
+        true_latent_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
+        phase_diff_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
+        fake_latent_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
     )
 
 

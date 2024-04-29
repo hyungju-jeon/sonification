@@ -212,7 +212,11 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(torch.load(f"data/ssm_state_cart_dict.pt"))
+        self.ssm.load_state_dict(
+            torch.load(
+                f"/Users/hyungju/Desktop/hyungju/Project/sonification/results/ssm_state_dict_cart_epoch_360.pt"
+            )
+        )
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 
@@ -231,7 +235,7 @@ class LatentInference:
             result_cart[2 * i + 1] = result_polar[2 * i] * np.sin(
                 result_polar[2 * i + 1]
             )
-        return result_cart
+        return result_polar
 
     async def start(self):
         await self.setup_server()
@@ -240,7 +244,9 @@ class LatentInference:
             self.sum_spikes[0, :] = torch.from_numpy(np.sum(self.spikes, axis=0)).type(
                 torch.float32
             )
-            self.input = torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(torch.float32)
+            self.input = (
+                torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(torch.float32).numpy()
+            )
             self.cart_input = torch.zeros((1, 4))
             self.trajectory = TRAJECTORY[0]
             for i in range(4):
@@ -272,10 +278,12 @@ class LatentInference:
                     self.cart_input[0, 3] = torch.from_numpy(y_n - y)
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.cart_input, 100)
+                stats_t, z_f_t = self.ssm.step_0(
+                    self.sum_spikes, self.cart_input * 20, 100
+                )
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.cart_input, 100, self.inferred
+                    self.sum_spikes, self.cart_input * 20, 100, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1

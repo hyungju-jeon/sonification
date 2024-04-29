@@ -131,9 +131,12 @@ class LatentInference:
         approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
         """likelihood pdf"""
-        C = LinearPolarToCartesian(
-            n_latents, n_neurons, 4, loading=loading, bias=b, device=device
-        )
+        C = torch.nn.Linear(
+            n_latents, n_neurons, bias=True, device=device
+        ).requires_grad_(False)
+        C.weight.data = torch.tensor(loading.T).type(torch.float32)
+        C.bias.data = torch.tensor(b).type(torch.float32)
+
         likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz, device=device)
 
         """dynamics module"""
@@ -211,9 +214,38 @@ class LatentInference:
             self.sum_spikes[0, :] = torch.from_numpy(np.sum(self.spikes, axis=0)).type(
                 torch.float32
             )
-            self.input[0, :] = torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(
-                torch.float32
-            )
+
+            self.input = torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(torch.float32)
+            self.cart_input = torch.zeros((1, 4))
+            self.trajectory = TRAJECTORY[0]
+            for i in range(4):
+                if i == 1:
+                    r = np.sqrt(
+                        self.trajectory[2 * i] ** 2 + self.trajectory[2 * i + 1] ** 2
+                    )
+                    theta = np.arctan2(
+                        self.trajectory[2 * i + 1], self.trajectory[2 * i]
+                    )
+                    x, y = r * np.cos(theta), r * np.sin(theta)
+                    x_n, y_n = (r - self.input[1]) * np.cos(theta + self.input[0]), (
+                        r - self.input[1]
+                    ) * np.sin(theta + self.input[0])
+                    self.cart_input[0, 0] = torch.from_numpy(x_n - x)
+                    self.cart_input[0, 1] = torch.from_numpy(y_n - y)
+                elif i == 3:
+                    r = np.sqrt(
+                        self.trajectory[2 * i] ** 2 + self.trajectory[2 * i + 1] ** 2
+                    )
+                    theta = np.arctan2(
+                        self.trajectory[2 * i + 1], self.trajectory[2 * i]
+                    )
+                    x, y = r * np.cos(theta), r * np.sin(theta)
+                    x_n, y_n = (r - self.input[1]) * np.cos(theta + self.input[0]), (
+                        r - self.input[1]
+                    ) * np.sin(theta + self.input[0])
+                    self.cart_input[0, 2] = torch.from_numpy(x_n - x)
+                    self.cart_input[0, 3] = torch.from_numpy(y_n - y)
+
 
             if self.t == 0:
                 stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 10)

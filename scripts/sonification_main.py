@@ -26,7 +26,7 @@ CYCLE_FAST = {
 CYCLE_SLOW = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 0.5,
+    "w": 2 * np.pi * .2,
     "Q": None,
     "dt": dt,
 }

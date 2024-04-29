@@ -1,32 +1,26 @@
 # %%
+
 import os
 import random
-import time
 from scipy.signal import convolve2d
 
-import h5py
 from matplotlib.pylab import f
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from lightning.pytorch.loggers import CSVLogger
 from matplotlib import cm
 from numpy import random
-from sklearn.linear_model import Ridge
 from tqdm import tqdm
 from scipy.linalg import block_diag
 
-import filter.utils as utils
 from filter.approximations import DenseGaussianApproximations
 from filter.dynamics import (
     DenseGaussianInitialCondition,
     DenseGaussianNonlinearDynamics,
 )
-from filter.encoders import BackwardEncoderLRMvn, LocalEncoderLRMvn
+from filter.encoders import LocalEncoderLRMvn
 from filter.likelihoods import (
-    GaussianLikelihood,
     PoissonLikelihood,
-    LinearPolarToCartesian,
 )
 from filter.nonlinear_smoother import (
     FullRankNonlinearStateSpaceModelFilter,
@@ -35,8 +29,9 @@ from filter.nonlinear_smoother import (
 from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
 
+
 dt = 1e-3
-num_neurons = 25
+num_neurons = 50
 
 CYCLE_FAST = {
     "x0": np.array([0.5, 0]),
@@ -48,7 +43,7 @@ CYCLE_FAST = {
 CYCLE_SLOW = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * 0.5,
+    "w": 2 * np.pi * .2,
     "Q": None,
     "dt": dt,
 }
@@ -61,27 +56,40 @@ loading_matrix_slow_name = (
     "/Users/hyungju/Desktop/hyungju/Project/sonification/data/loading_matrix_slow.npz"
 )
 
-param = np.load(loading_matrix_fast_name, allow_pickle=True)
-C_fast, b_fast = block_diag(*param["C"]), param["b"].flatten()
-param = np.load(loading_matrix_slow_name, allow_pickle=True)
-C_slow, b_slow = block_diag(*param["C"]), param["b"].flatten()
+# param = np.load(loading_matrix_fast_name, allow_pickle=True)
+# C_fast, b_fast = block_diag(*param["C"]), param["b"].flatten()
+# param = np.load(loading_matrix_slow_name, allow_pickle=True)
+# C_slow, b_slow = block_diag(*param["C"]), param["b"].flatten()
 
-loading = block_diag(C_fast, C_slow)
-b = np.vstack([b_fast, b_slow]).flatten()
+# loading = block_diag(C_fast, C_slow)
+# b = np.vstack([b_fast, b_slow]).flatten()
 
 
 def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
+    """
+    Generate the loading matrix for a neural network model.
+
+    Args:
+        num_neurons (int): The number of neurons in the network.
+        cycle_info (dict): A dictionary containing information about the cycle.
+        scale (float, optional): The scale factor for the loading matrix. Defaults to 1.
+        noise (float, optional): The noise level for the loading matrix. Defaults to 5.
+
+    Returns:
+        list: A list containing two loading matrices [C_r, C_p] and two bias vectors [b_r, b_p].
+    """
+    
     dt = cycle_info["dt"]
     reference_cycle = limit_circle(**cycle_info)
     perturb_cycle = limit_circle(**cycle_info)
     two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    latent_trajectory = two_cycle.generate_trajectory(2000) * 1e-3
+    latent_trajectory = two_cycle.generate_trajectory(10000) * 1e-3
     target_rate = 10
 
     theta = np.random.uniform(0, 2 * np.pi, num_neurons)
     r = scale + np.random.randn(num_neurons) * noise
     C_r = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 5
+    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
     target_firing_rate *= 1e-3
     b = 1.0 * np.random.rand(1, num_neurons)
     firing_rates = computeFiringRate(latent_trajectory[:, :2], C_r, b)
@@ -92,7 +100,7 @@ def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     theta = np.random.uniform(0, 2 * np.pi, num_neurons)
     r = scale + np.random.randn(num_neurons) * noise
     C_p = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 5
+    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
     target_firing_rate *= 1e-3
     b = 1.0 * np.random.rand(1, num_neurons)
     firing_rates = computeFiringRate(latent_trajectory[:, :2], C_p, b)
@@ -102,22 +110,33 @@ def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     return [C_r, C_p], [b_r, b_p]
 
 
-def initialize_loading_matrix():
-    num_neurons = 25
+def initialize_loading_matrix(override=True):
+    """
+    Initializes the loading matrix for sonification.
+
+    Args:
+        override (bool, optional): If True, the loading matrix will be regenerated even if it already exists. 
+            Defaults to True.
+
+    Returns:
+        None
+    """
+
+    num_neurons = 50
     loading_matrix_fast_name = "./data/loading_matrix_fast.npz"
     loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
 
-    if not os.path.exists(loading_matrix_fast_name) or not os.path.exists(
+    if (not os.path.exists(loading_matrix_fast_name) or not os.path.exists(
         loading_matrix_slow_name
-    ):
+    )) or override:
         C_fast, b_fast = generate_loading_matrix(
-            num_neurons, CYCLE_FAST, scale=3, noise=0.3
+            num_neurons, CYCLE_FAST, scale=500, noise=0.3
         )
 
         np.savez(loading_matrix_fast_name, C=C_fast, b=b_fast)
 
         C_slow, b_slow = generate_loading_matrix(
-            num_neurons, CYCLE_SLOW, scale=3, noise=0.3
+            num_neurons, CYCLE_SLOW, scale=500, noise=0.3
         )
         np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
 
@@ -142,7 +161,6 @@ def generate_sample(n_time_bins):
 
     sum_y_fast = np.zeros((n_time_bins, 50))
     sum_y_slow = np.zeros((n_time_bins, 50))
-    sum_u = np.zeros((n_time_bins, 2))
     for i in range(n_time_bins):
         sum_y_fast[i, :] = np.sum(y_fast[i * 20 : (i + 1) * 20, :], axis=0)
         sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
@@ -171,13 +189,13 @@ def train_network():
     rank_y = n_latents
 
     batch_sz = 256
-    n_epochs = 250
+    n_epochs = 500
     blues = cm.get_cmap("Blues", n_samples)
 
     """data params"""
     n_trials = 2000
     n_neurons = 100
-    n_time_bins = 200
+    n_time_bins = 300
 
     B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
         False
@@ -215,24 +233,35 @@ def train_network():
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    C = LinearPolarToCartesian(
-        n_latents, n_neurons, 4, loading=loading, bias=b, device=device
+    # C = LinearPolarToCartesian(
+    #     n_latents, n_neurons, 4, loading=loading, bias=b, device=device
+    # )
+    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(
+        False
     )
-    likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz, device=device)
+    C.weight.data = torch.tensor(loading.T).type(torch.float32)
+    C.bias.data = torch.tensor(b).type(torch.float32)
+
+    likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=20, device=device)
 
     """dynamics module"""
 
     # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
     def A(x):
         Ax = torch.zeros_like(x)
-        Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
-        Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
-        Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
-        Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
-        Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
-        Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
-        Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
-        Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+        for i in range(4):
+            r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
+            theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
+
+            r_new = r + r * (1 - r**2) * bin_sz
+            theta_new = (
+                theta + 2 * np.pi * 1.5 * bin_sz
+                if i < 2
+                else theta + 2 * np.pi * 0.5 * bin_sz
+            )
+
+            Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+            Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
         return Ax
 
     dynamics_fn = A
@@ -302,7 +331,10 @@ def train_network():
                         z_s[:, :, :, 2 * i + 1]
                     )
 
-                torch.save(ssm.state_dict(), f"results/ssm_state_dict_big_epoch_{t}.pt")
+                torch.save(
+                    ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt"
+                )
+
                 fig, axs = plt.subplots(1, n_latents, figsize=(20, 5))
                 [
                     axs[i].plot(z_c[j, 0, :, i], color=blues(j), alpha=0.5)
@@ -319,7 +351,10 @@ def train_network():
                 plt.close()
                 # plt.show()
 
-    torch.save(ssm.state_dict(), f"results/ssm_state_dict_big_epoch_{n_epochs}.pt")
+    torch.save(
+        ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt"
+    )
+
 
     """real-time test"""
     z_f = []
@@ -362,5 +397,5 @@ if __name__ == "__main__":
     np.random.seed(123)
     torch.manual_seed(123)
 
-    # initialize_loading_matrix()
-    train_network()
+    initialize_loading_matrix()
+    # train_network()

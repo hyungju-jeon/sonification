@@ -185,11 +185,7 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(
-            torch.load(
-                f"/Users/hyungju/Desktop/hyungju/Project/sonification/results/ssm_state_dict_cart_epoch_360.pt"
-            )
-        )
+        self.ssm.load_state_dict(torch.load(f"data/ssm_state_cart_dict.pt"))
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 

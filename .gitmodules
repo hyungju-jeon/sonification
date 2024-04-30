@@ -4,4 +4,4 @@
 
 [submodule "utils/pseyepy"]
 	path = utils/pseyepy
-	url = https://github.com/bensondaled/pseyepy.git
+	url = https://github.com/mahmoud-elmakki/pseyepy.git

@@ -27,6 +27,8 @@ dt = 1e-3  # 1ms for dynamic system update
 num_neurons = 50
 TARGET_FIRING_RATE = 5
 TARGET_SNR = 0
+RTAM_RATIO = 50
+RTAM_LENGTH = 100
 
 
 # ---------------------------------------------------------------- #
@@ -54,6 +56,11 @@ class LatentDynamics:
         self.latent = self.coupled_cycle.get_state()
         self.phase_diff = self.coupled_cycle.get_phase_diff()
         self.verbose = verbose
+        self.RTAM_buffer = np.zeros((RTAM_RATIO, RTAM_LENGTH, 4))
+        self.RTAM_buffer_index = 0
+        self.RTAM_set = 0
+        self.RTAM_set_index = 0
+        self.RTAM_available = False
 
         # pass the handlers to the dispatcher
         DISPATCHER.map("/INPUT_MAX", self.max_to_latent_osc_handler)
@@ -61,13 +68,19 @@ class LatentDynamics:
 
     async def start(self):
         await self.setup_server()
+        RTAM_count = 0
         while True:
             start_t = time.perf_counter_ns()
             u = np.stack([INPUT_X[0], INPUT_Y[0]], axis=0)
             # u = self.INPUT_X
             self.coupled_cycle.update_state(u)
             self.latent = self.get_state()
-            # print()
+            if RTAM_count % RTAM_RATIO == 0:
+                self.update_RTAM()
+            RTAM_count += 1
+
+            if self.RTAM_available:
+                self.RTAM_set_index += 1
             self.phase_diff = self.coupled_cycle.get_phase_diff()
 
             elapsed_time = time.perf_counter_ns() - start_t
@@ -78,6 +91,29 @@ class LatentDynamics:
                     f"Dynamical system Iteration took {elapsed_time/1e6}ms which is longer than {dt*1e3} ms"
                 )
             await busy_timer(sleep_duration)
+
+    def update_RTAM(self):
+        for i in range(RTAM_RATIO):
+            if self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO)*i >= 0:
+                self.RTAM_buffer[i, (self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO)*i) % RTAM_LENGTH] = (
+                    self.latent
+                )
+
+        self.RTAM_buffer_index += 1
+        if self.RTAM_buffer_index > RTAM_LENGTH - (RTAM_LENGTH // RTAM_RATIO):
+            self.RTAM_available = True
+
+    def get_RTAM(self):
+        if self.RTAM_set_index >= RTAM_LENGTH:
+            self.RTAM_set += 1
+            self.RTAM_set_index = 0
+        if self.RTAM_set >= RTAM_RATIO:
+            self.RTAM_set = 0
+        if self.RTAM_available:
+            current_RTAM = self.RTAM_buffer[self.RTAM_set, self.RTAM_set_index,:]
+        else:
+            current_RTAM = [0] * 4
+        return current_RTAM
 
     def get_state(self):
         return self.coupled_cycle.get_state()

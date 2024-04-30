@@ -731,14 +731,14 @@ class LatentOrbitVisualizer:
                 pos=np.zeros((self.L, 3)),
                 color=self.color,
                 width=5,
-                antialias=True,
+                antialias=False,
             )
             self.traces[i].setVisible(visible)
             self.plot_widget.addItem(self.traces[i])
         self.frame = 0
         self.prev_count = 0
         self.count = 0
-        self.bias = 0
+        self.traj_pos_bias = 0
         self.visible = visible
 
     def animation(self):
@@ -759,7 +759,7 @@ class LatentOrbitVisualizer:
                     [
                         np.ones_like(self.data[0, slice_window])
                         * (-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2),
-                        (self.data[i, slice_window] * SCALE_FACTOR + self.bias)
+                        (self.data[i, slice_window] * SCALE_FACTOR + self.traj_pos_bias)
                         * ASPECT_RATIO,
                         self.data[i + 1, slice_window] * SCALE_FACTOR,
                     ]
@@ -1050,9 +1050,9 @@ class SpikePacer(QtCore.QObject):
         for trace in vis_wall_inferred_latent.traces.items():
             trace[1].setVisible(args[0])
         if args[0]:
-            vis_wall_true_latent.bias = -GRID_SIZE_HEIGHT / 2
+            vis_wall_true_latent.traj_pos_bias = -GRID_SIZE_HEIGHT / 2
         else:
-            vis_wall_true_latent.bias = 0
+            vis_wall_true_latent.traj_pos_bias = 0
 
     def max_switch_ceiling_inferred_latent(self, address, *args):
         vis_ceiling_inferred_latent.visible = args[0]

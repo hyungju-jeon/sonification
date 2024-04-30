@@ -14,7 +14,11 @@ Sonification project for METAMERSION
    ```
    conda env create -f environment.yml
    ```
-4. `pip install` package
+   Also install the dependencies of the pseyepy package for interfacing the USB camera with Python:
+   ```
+   python utils/pseyepy/setup.py
+   ```
+5. `pip install` package
    ```
    pip install -e .
    ```

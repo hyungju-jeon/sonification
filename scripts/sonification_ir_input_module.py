@@ -25,27 +25,18 @@ class MotionEnergy:
     def __init__(self, verbose=False):
 
         try:
+            # 63 is the max possible gain.
             self.FRAME = IRVideoCapture(0, gain=63)
         except:
             print("Error: Failed to open camera")
-
-        #self.FRAME.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-        #self.FRAME.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-
-        # Check if the camera opened successfully
-        #if not self.FRAME.isOpened():
-        #    print("Error: Failed to open camera")
-        #    exit()
+            exit()
 
         # Read first frame
         try:
             frame, timestamp = self.FRAME.read()
         except:
             print("Error: Failed to capture frame")
-
-        #if not ret:
-        #    print("Error: Failed to capture frame")
-        #    exit()
+            exit()
 
         self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         self.verbose = verbose
@@ -61,10 +52,7 @@ class MotionEnergy:
                 curr_frame, timestamp = self.FRAME.read()
             except:
                 print("Error: Failed to capture frame")
-
-            #if not ret:
-            #    print("Error: Failed to capture frame")
-            #    break
+                break
 
             # Resize current frame
             curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)

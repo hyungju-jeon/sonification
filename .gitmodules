@@ -1,3 +1,7 @@
 [submodule "utils/ndlib"]
 	path = utils/ndlib
 	url = https://github.com/hyungju-jeon/ndlib.git
+
+[submodule "utils/pseyepy"]
+	path = utils/ndlib
+	url = https://github.com/bensondaled/pseyepy.git

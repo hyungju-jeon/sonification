@@ -61,6 +61,17 @@ loading = C_slow
 b = b_slow
 
 
+def from_polar_to_cart(z_p):
+
+    z_c = torch.zeros_like(z_p)
+
+    for i in range(2):
+        z_c[:, :, :, 2 * i] = z_p[:, :, :, 2 * i] * torch.cos(z_p[:, :, :, 2 * i + 1])
+        z_c[:, :, :, 2 * i + 1] = z_p[:, :, :, 2 * i] * torch.sin(z_p[:, :, :, 2 * i + 1])
+
+    return z_c
+
+
 def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
     """
     Generate the loading matrix for a neural network model.
@@ -176,12 +187,12 @@ def train_network():
     n_samples = 25
     rank_y = n_latents
 
-    batch_sz = 256
-    n_epochs = 700
+    batch_sz = 128
+    n_epochs = 20
     blues = cm.get_cmap("Blues", n_samples)
 
     """data params"""
-    n_trials = 3500
+    n_trials = 1000
     n_neurons = 100
     n_time_bins = 300
 
@@ -312,26 +323,20 @@ def train_network():
 
         with torch.no_grad():
             if t % 10 == 0:
-                z_c = torch.zeros_like(z_s)
-
-                for i in range(2):
-                    z_c[:, :, :, 2 * i] = z_s[:, :, :, 2 * i] * torch.cos(
-                        z_s[:, :, :, 2 * i + 1]
-                    )
-                    z_c[:, :, :, 2 * i + 1] = z_s[:, :, :, 2 * i] * torch.sin(
-                        z_s[:, :, :, 2 * i + 1]
-                    )
+                #z_c = from_polar_to_cart(z_s)
+                z_c = z_s
 
                 torch.save(
                     ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt"
                 )
 
+                # If the latent space model spills out the latents in polar dorm,
+                # don't forget to pass z_c instead of z_t
                 plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=t)
 
     torch.save(
         ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt"
     )
-
 
     """real-time test"""
     z_f = []
@@ -345,14 +350,13 @@ def train_network():
         z_f.append(z_f_t)
 
     z_f = torch.stack(z_f, dim=2)
-    z_c = torch.zeros_like(z_f)
+    #z_c = from_polar_to_cart(z_f)
+    z_c = z_f
 
-    for i in range(2):
-        z_c[:, :, :, 2 * i] = z_f[:, :, :, 2 * i] * torch.cos(z_f[:, :, :, 2 * i + 1])
-        z_c[:, :, :, 2 * i + 1] = z_f[:, :, :, 2 * i] * torch.sin(z_f[:, :, :, 2 * i + 1])
-
+    # If the latent space model spills out the latents in polar dorm,
+    # don't forget to pass z_c instead of z_t
     with torch.no_grad():
-        plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=n_epochs)
+        plotting.plot_latents(n_latents, n_samples, blues, z_f, z_gt, epoch=n_epochs)
 
 
 if __name__ == "__main__":

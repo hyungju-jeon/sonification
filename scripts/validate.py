@@ -40,7 +40,67 @@ from utils.ndlib.dynlib import *
 from utils import plotting
 
 
-def main():
+dt = 1e-3
+num_neurons = 50
+
+CYCLE_FAST = {
+    "x0": np.array([0.5, 0]),
+    "d": 1,
+    "w": 2 * np.pi * 1.5,
+    "Q": None,
+    "dt": dt,
+}
+CYCLE_SLOW = {
+    "x0": np.array([0.5, 0]),
+    "d": 1,
+    "w": 2 * np.pi * .2,
+    "Q": None,
+    "dt": dt,
+}
+
+loading_matrix_slow_name = (
+    "/Users/mahmoud/catnip/sonification/data/loading_matrix_slow.npz"
+)
+
+param = np.load(loading_matrix_slow_name, allow_pickle=True)
+C_slow, b_slow = block_diag(*param["C"]), param["b"].flatten()
+
+loading = C_slow
+b = b_slow
+
+
+def generate_sample(n_time_bins):
+
+    # Shut off the input to the perturb_cycle
+    u = 1.5 * np.zeros((n_time_bins, 2))
+    #u = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5)
+
+    u[:, 0] = np.clip(u[:, 0] * 2 * np.pi, -np.pi, np.pi) * 0.001
+    u[:, 1] = np.clip(u[:, 1], -1, 1) * 0.01
+    u_repeat = np.repeat(u, 20, axis=0)
+
+    reference_cycle = limit_circle(**CYCLE_SLOW)
+    perturb_cycle = limit_circle(**CYCLE_SLOW)
+    coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
+
+    z_slow = coupled_cycle.generate_trajectory(20 * n_time_bins, u_repeat)
+    y_slow = np.random.poisson(np.exp(z_slow @ C_slow + b_slow))
+
+    sum_y_slow = np.zeros((n_time_bins, 100))
+
+    for i in range(n_time_bins):
+        sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
+
+    print(torch.tensor(z_slow[::20]))
+
+    return (
+        torch.tensor(sum_y_slow),
+        torch.tensor(z_slow[::20]),
+        torch.tensor(u * 20).type(torch.float32),
+    )
+
+
+def validate():
 
     bin_sz = 20e-3
     device = "cpu"
@@ -62,7 +122,7 @@ def main():
     blues = plt.cm.get_cmap("Blues", n_samples)
 
     """data params"""
-    n_trials = 3500
+    n_trials = 50
     n_neurons = 100
     n_time_bins = 300
 
@@ -94,13 +154,13 @@ def main():
         print(f"trial: {i}")
         y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
 
-    y_train_dataset = torch.utils.data.TensorDataset(
+    y_test_dataset = torch.utils.data.TensorDataset(
         y_gt,
         u,
         z_gt,
     )
-    train_dataloader = torch.utils.data.DataLoader(
-        y_train_dataset, batch_size=batch_sz, shuffle=True
+    test_dataloader = torch.utils.data.DataLoader(
+        y_test_dataset, batch_size=batch_sz, shuffle=True
     )
 
     """approximation pdf"""
@@ -170,7 +230,31 @@ def main():
         device=device,
     )
 
+    ssm.load_state_dict(torch.load("results/ssm_state_dict_cart_epoch_100.pt"))
+    ssm.eval()
+
+    """real-time test"""
+    z_p = []
+
+    for t in range(n_time_bins):
+        if t == 0:
+            stats_t, z_p_t = ssm.step_0(y_gt[:, t], u[:, t], n_samples)
+        else:
+            stats_t, z_p_t = ssm.step_t(y_gt[:, t], u[:, t], n_samples, z_p[t - 1])
+
+        z_p.append(z_p_t)
+
+    z_p = torch.stack(z_p, dim=2)
+    z_c = torch.zeros_like(z_p)
+
+    for i in range(2):
+        z_c[:, :, :, 2 * i] = z_p[:, :, :, 2 * i] * torch.cos(z_p[:, :, :, 2 * i + 1])
+        z_c[:, :, :, 2 * i + 1] = z_p[:, :, :, 2 * i] * torch.sin(z_p[:, :, :, 2 * i + 1])
+
+    with torch.no_grad():
+        #plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=n_epochs)
+        plotting.plot_latents(n_latents, n_samples, blues, z_p, z_gt, epoch=n_epochs)
 
 
 if __name__ == '__main__':
-    main()
+    validate()

@@ -1,17 +1,25 @@
-# %%
-
+import numpy as np
 import os
 import random
-from scipy.signal import convolve2d
+import math
 
-from matplotlib.pylab import f
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
-from matplotlib import cm
 from numpy import random
 from tqdm import tqdm
+
+from scipy.signal import convolve2d
 from scipy.linalg import block_diag
+
+import matplotlib.pyplot as plt
+from matplotlib.pylab import f
+from matplotlib import cm
+
+import torch
+import torch.nn as nn
+
+import pytorch_lightning as lightning
+
+from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from filter.approximations import DenseGaussianApproximations
 from filter.dynamics import (
@@ -61,73 +69,6 @@ loading = C_slow
 b = b_slow
 
 
-def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
-    """
-    Generate the loading matrix for a neural network model.
-
-    Args:
-        num_neurons (int): The number of neurons in the network.
-        cycle_info (dict): A dictionary containing information about the cycle.
-        scale (float, optional): The scale factor for the loading matrix. Defaults to 1.
-        noise (float, optional): The noise level for the loading matrix. Defaults to 5.
-
-    Returns:
-        list: A list containing two loading matrices [C_r, C_p] and two bias vectors [b_r, b_p].
-    """
-    
-    dt = cycle_info["dt"]
-    reference_cycle = limit_circle(**cycle_info)
-    perturb_cycle = limit_circle(**cycle_info)
-    two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    latent_trajectory = two_cycle.generate_trajectory(10000)
-    target_rate = 10
-
-    theta = np.random.uniform(0, 2 * np.pi, num_neurons)
-    r = scale + np.random.randn(num_neurons) * noise
-    C_r = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
-    target_firing_rate *= 1e-3
-    b = 1.0 * np.random.rand(1, num_neurons)
-    firing_rates = computeFiringRate(latent_trajectory[:, :2], C_r, b)
-    b_r = updateBiasToMatchTargetFiringRate(
-        np.mean(firing_rates, axis=0), b, targetRatePerBin=target_firing_rate
-    )
-
-    theta = np.random.uniform(0, 2 * np.pi, num_neurons)
-    r = scale + np.random.randn(num_neurons) * noise
-    C_p = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
-    target_firing_rate *= 1e-3
-    b = 1.0 * np.random.rand(1, num_neurons)
-    firing_rates = computeFiringRate(latent_trajectory[:, :2], C_p, b)
-    b_p = updateBiasToMatchTargetFiringRate(
-        np.mean(firing_rates, axis=0), b, targetRatePerBin=target_firing_rate
-    )
-    return [C_r, C_p], [b_r, b_p]
-
-
-def initialize_loading_matrix(override=True):
-    """
-    Initializes the loading matrix for sonification.
-
-    Args:
-        override (bool, optional): If True, the loading matrix will be regenerated even if it already exists. 
-            Defaults to True.
-
-    Returns:
-        None
-    """
-    num_neurons = 50
-    loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
-
-    if (not os.path.exists(loading_matrix_slow_name)) or override:
-
-        C_slow, b_slow = generate_loading_matrix(
-            num_neurons, CYCLE_SLOW, scale=3, noise=0.3
-        )
-        np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
-
-
 def generate_sample(n_time_bins):
 
     # Shut off the input to the perturb_cycle
@@ -158,8 +99,7 @@ def generate_sample(n_time_bins):
         torch.tensor(u * 20).type(torch.float32),
     )
 
-
-def train_network():
+def main():
 
     bin_sz = 20e-3
     device = "cpu"
@@ -176,12 +116,11 @@ def train_network():
     n_samples = 25
     rank_y = n_latents
 
-    batch_sz = 256
-    n_epochs = 700
-    blues = cm.get_cmap("Blues", n_samples)
+    batch_sz = 1
+    blues = plt.cm.get_cmap("Blues", n_samples)
 
     """data params"""
-    n_trials = 3500
+    n_trials = 10
     n_neurons = 100
     n_time_bins = 300
 
@@ -197,6 +136,7 @@ def train_network():
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
+    
     m_0 = (
         torch.tensor([0.5, 0, 0.5, 0], device=device)
         .requires_grad_(False)
@@ -212,13 +152,13 @@ def train_network():
         print(f"trial: {i}")
         y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
 
-    y_train_dataset = torch.utils.data.TensorDataset(
+    y_test_dataset = torch.utils.data.TensorDataset(
         y_gt,
         u,
         z_gt,
     )
-    train_dataloader = torch.utils.data.DataLoader(
-        y_train_dataset, batch_size=batch_sz, shuffle=True
+    test_dataloader = torch.utils.data.DataLoader(
+        y_test_dataset, batch_size=batch_sz, shuffle=True
     )
 
     """approximation pdf"""
@@ -288,79 +228,12 @@ def train_network():
         device=device,
     )
 
-    # ssm.likelihood_pdf.readout_fn[-1].bias.data = prob_utils.estimate_poisson_rate_bias(y_train, bin_sz)
-    """train model"""
-    opt = torch.optim.Adam(ssm.parameters(), lr=1e-3, weight_decay=1e-6)
+    ssm.load_state_dict(torch.load("results/ssm_state_dict_cart_epoch_100.pt"))
+    ssm.eval()
 
-    for t in (p_bar := tqdm(range(n_epochs), position=0, leave=True)):
-        avg_loss = 0.0
-
-        print(f"epoch: {t}")
-        for dx, (y_tr, u_tr, z_tr) in enumerate(train_dataloader):
-            ssm.train()
-            opt.zero_grad()
-            loss, z_s, stats = ssm(y_tr, n_samples, u_tr)
-            avg_loss += loss.item()
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(ssm.parameters(), 1.0)
-            opt.step()
-            opt.zero_grad()
-            p_bar.set_description(f"loss: {loss.item()}")
-
-        avg_loss /= len(train_dataloader)
-
-        with torch.no_grad():
-            if t % 10 == 0:
-                z_c = torch.zeros_like(z_s)
-
-                for i in range(2):
-                    z_c[:, :, :, 2 * i] = z_s[:, :, :, 2 * i] * torch.cos(
-                        z_s[:, :, :, 2 * i + 1]
-                    )
-                    z_c[:, :, :, 2 * i + 1] = z_s[:, :, :, 2 * i] * torch.sin(
-                        z_s[:, :, :, 2 * i + 1]
-                    )
-
-                torch.save(
-                    ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt"
-                )
-
-                plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=t)
-
-    torch.save(
-        ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt"
-    )
+    print(y_test_dataset.type)
+    z_i = ssm(y_test_dataset, n_samples)
 
 
-    """real-time test"""
-    z_f = []
-
-    for t in range(n_time_bins):
-        if t == 0:
-            stats_t, z_f_t = ssm.step_0(y_gt[:, t], u[:, t], n_samples)
-        else:
-            stats_t, z_f_t = ssm.step_t(y_gt[:, t], u[:, t], n_samples, z_f[t - 1])
-
-        z_f.append(z_f_t)
-
-    z_f = torch.stack(z_f, dim=2)
-    z_c = torch.zeros_like(z_f)
-
-    for i in range(2):
-        z_c[:, :, :, 2 * i] = z_f[:, :, :, 2 * i] * torch.cos(z_f[:, :, :, 2 * i + 1])
-        z_c[:, :, :, 2 * i + 1] = z_f[:, :, :, 2 * i] * torch.sin(z_f[:, :, :, 2 * i + 1])
-
-    with torch.no_grad():
-        plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=n_epochs)
-
-
-if __name__ == "__main__":
-
-    random.seed(123)
-    np.random.seed(123)
-    torch.manual_seed(123)
-
-    initialize_loading_matrix()
-    #generate_sample(10)
-    train_network()
+if __name__ == '__main__':
+    main()

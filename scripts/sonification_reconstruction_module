@@ -2,9 +2,7 @@
 
 import os
 import random
-from scipy.signal import convolve2d
 
-from matplotlib.pylab import f
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -14,18 +12,10 @@ from tqdm import tqdm
 from scipy.linalg import block_diag
 
 from filter.approximations import DenseGaussianApproximations
-from filter.dynamics import (
-    DenseGaussianInitialCondition,
-    DenseGaussianNonlinearDynamics,
-)
+from filter.dynamics import DenseGaussianInitialCondition, DenseGaussianNonlinearDynamics
 from filter.encoders import LocalEncoderLRMvn
-from filter.likelihoods import (
-    PoissonLikelihood,
-)
-from filter.nonlinear_smoother import (
-    FullRankNonlinearStateSpaceModelFilter,
-    NonlinearFilter,
-)
+from filter.likelihoods import PoissonLikelihood
+from filter.nonlinear_smoother import FullRankNonlinearStateSpaceModelFilter, NonlinearFilter
 from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
 
@@ -45,14 +35,12 @@ CYCLE_FAST = {
 CYCLE_SLOW = {
     "x0": np.array([0.5, 0]),
     "d": 1,
-    "w": 2 * np.pi * .2,
+    "w": 2 * np.pi * 0.2,
     "Q": None,
     "dt": dt,
 }
 
-loading_matrix_slow_name = (
-    "/Users/mahmoud/catnip/sonification/data/loading_matrix_slow.npz"
-)
+loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
 
 param = np.load(loading_matrix_slow_name, allow_pickle=True)
 C_slow, b_slow = block_diag(*param["C"]), param["b"].flatten()
@@ -61,92 +49,90 @@ loading = C_slow
 b = b_slow
 
 
-def from_polar_to_cart(z_p):
+def polar_to_cartesian(z_p):
+    """
+    Converts complex numbers from polar form to cartesian form.
 
+    Args:
+        z_p (torch.Tensor): Complex numbers in polar form with shape (batch_size, channels, height, width, 2).
+
+    Returns:
+        torch.Tensor: Complex numbers in cartesian form with shape (batch_size, channels, height, width, 2).
+    """
+    if isinstance(z_p, np.ndarray):
+        z_p = torch.tensor(z_p)
     z_c = torch.zeros_like(z_p)
 
-    for i in range(2):
-        z_c[:, :, :, 2 * i] = z_p[:, :, :, 2 * i] * torch.cos(z_p[:, :, :, 2 * i + 1])
-        z_c[:, :, :, 2 * i + 1] = z_p[:, :, :, 2 * i] * torch.sin(z_p[:, :, :, 2 * i + 1])
+    for i in range(z_p.shape[-1] // 2):
+        z_c[..., 2 * i] = z_p[..., 2 * i] * torch.cos(z_p[..., 2 * i + 1])
+        z_c[..., 2 * i + 1] = z_p[..., 2 * i] * torch.sin(z_p[..., 2 * i + 1])
 
     return z_c
 
 
-def generate_loading_matrix(num_neurons, cycle_info, scale=1, noise=5):
+def cartesian_to_polar(z_c):
     """
-    Generate the loading matrix for a neural network model.
+    Converts complex numbers from cartesian form to polar form.
 
     Args:
-        num_neurons (int): The number of neurons in the network.
-        cycle_info (dict): A dictionary containing information about the cycle.
-        scale (float, optional): The scale factor for the loading matrix. Defaults to 1.
-        noise (float, optional): The noise level for the loading matrix. Defaults to 5.
+        z_c (torch.Tensor): Complex numbers in cartesian form with shape (batch_size, channels, height, width, 2).
 
     Returns:
-        list: A list containing two loading matrices [C_r, C_p] and two bias vectors [b_r, b_p].
+        torch.Tensor: Complex numbers in polar form with shape (batch_size, channels, height, width, 2).
     """
-    
-    dt = cycle_info["dt"]
-    reference_cycle = limit_circle(**cycle_info)
-    perturb_cycle = limit_circle(**cycle_info)
-    two_cycle = two_limit_circle(reference_cycle, perturb_cycle)
-    latent_trajectory = two_cycle.generate_trajectory(10000)
-    target_rate = 10
+    if isinstance(z_c, np.ndarray):
+        z_c = torch.tensor(z_c)
+    z_p = torch.zeros_like(z_c)
 
-    theta = np.random.uniform(0, 2 * np.pi, num_neurons)
-    r = scale + np.random.randn(num_neurons) * noise
-    C_r = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
-    target_firing_rate *= 1e-3
-    b = 1.0 * np.random.rand(1, num_neurons)
-    firing_rates = computeFiringRate(latent_trajectory[:, :2], C_r, b)
-    b_r = updateBiasToMatchTargetFiringRate(
-        np.mean(firing_rates, axis=0), b, targetRatePerBin=target_firing_rate
-    )
+    for i in range(z_c.shape[-1] // 2):
+        z_p[..., 2 * i] = torch.sqrt(z_c[..., 2 * i] ** 2 + z_c[..., 2 * i + 1] ** 2)
+        z_p[..., 2 * i + 1] = torch.atan2(z_c[..., 2 * i + 1], z_c[..., 2 * i])
 
-    theta = np.random.uniform(0, 2 * np.pi, num_neurons)
-    r = scale + np.random.randn(num_neurons) * noise
-    C_p = np.array([np.cos(theta), np.sin(theta)]) * r
-    target_firing_rate = target_rate + np.random.randn(num_neurons) * 3
-    target_firing_rate *= 1e-3
-    b = 1.0 * np.random.rand(1, num_neurons)
-    firing_rates = computeFiringRate(latent_trajectory[:, :2], C_p, b)
-    b_p = updateBiasToMatchTargetFiringRate(
-        np.mean(firing_rates, axis=0), b, targetRatePerBin=target_firing_rate
-    )
-    return [C_r, C_p], [b_r, b_p]
+    return z_p
 
 
-def initialize_loading_matrix(override=True):
+def compute_cartesian_input(u, z_p, dt=1e-3):
     """
-    Initializes the loading matrix for sonification.
+    Computes the cartesian input.
 
     Args:
-        override (bool, optional): If True, the loading matrix will be regenerated even if it already exists. 
-            Defaults to True.
+        u (torch.Tensor): The input tensor.
+        z_c (torch.Tensor): The latent tensor in cartesian form.
 
     Returns:
-        None
+        torch.Tensor: The cartesian input tensor.
     """
-    num_neurons = 50
-    loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
+    u_c = np.zeros_like(u)
+    z_w_input = np.zeros_like(z_p)
+    z_wo_input = np.zeros_like(z_p)
+    for i in range(u.shape[0]):
+        z_w_input[i, 0] = z_p[i, 0] + (z_p[i, 0] * (1 - z_p[i, 0]) - u[i, 1]) * dt
+        z_w_input[i, 1] = z_p[i, 1] + (2 * np.pi * 0.2 + u[i, 0]) * dt
 
-    if (not os.path.exists(loading_matrix_slow_name)) or override:
+        z_wo_input[i, 0] = z_p[i, 0] + (z_p[i, 0] * (1 - z_p[i, 0])) * dt
+        z_wo_input[i, 1] = z_p[i, 1] + (2 * np.pi * 0.2) * dt
 
-        C_slow, b_slow = generate_loading_matrix(
-            num_neurons, CYCLE_SLOW, scale=3, noise=0.3
-        )
-        np.savez(loading_matrix_slow_name, C=C_slow, b=b_slow)
+        u_c = polar_to_cartesian(z_w_input) - polar_to_cartesian(z_wo_input)
+    return u_c
 
 
 def generate_sample(n_time_bins):
+    """
+    Generate a sample for sonification reconstruction.
+
+    Args:
+        n_time_bins (int): The number of time bins.
+
+    Returns:
+        tuple: A tuple containing three torch tensors:
+            - sum_y_slow (torch.Tensor): A tensor of shape (n_time_bins, 100) representing the sum of y_slow values.
+            - z_slow (torch.Tensor): A tensor representing the z_slow values.
+            - u (torch.Tensor): A tensor representing the u values, multiplied by 20 and of type torch.float32.
+    """
 
     # Shut off the input to the perturb_cycle
-    u = 1.5 * np.zeros((n_time_bins, 2))
-    #u = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5)
-
-    u[:, 0] = np.clip(u[:, 0] * 2 * np.pi, -np.pi, np.pi) * 0.001
-    u[:, 1] = np.clip(u[:, 1], -1, 1) * 0.01
+    # u = 1.5 * np.zeros((n_time_bins, 2))
+    u = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5)
     u_repeat = np.repeat(u, 20, axis=0)
 
     reference_cycle = limit_circle(**CYCLE_SLOW)
@@ -155,18 +141,17 @@ def generate_sample(n_time_bins):
 
     z_slow = coupled_cycle.generate_trajectory(20 * n_time_bins, u_repeat)
     y_slow = np.random.poisson(np.exp(z_slow @ C_slow + b_slow))
+    u_c = compute_cartesian_input(u_repeat, z_slow[:, :2])
 
     sum_y_slow = np.zeros((n_time_bins, 100))
 
     for i in range(n_time_bins):
         sum_y_slow[i, :] = np.sum(y_slow[i * 20 : (i + 1) * 20, :], axis=0)
 
-    print(torch.tensor(z_slow[::20]))
-
     return (
         torch.tensor(sum_y_slow),
         torch.tensor(z_slow[::20]),
-        torch.tensor(u * 20).type(torch.float32),
+        torch.tensor(u_c[::20] * 20).type(torch.float32),
     )
 
 
@@ -188,31 +173,23 @@ def train_network():
     rank_y = n_latents
 
     batch_sz = 128
-    n_epochs = 20
+    n_epochs = 100
     blues = cm.get_cmap("Blues", n_samples)
 
     """data params"""
-    n_trials = 1000
+    n_trials = 200
     n_neurons = 100
-    n_time_bins = 300
+    n_time_bins = 500
 
-    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
-        False
-    )
+    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(False)
 
     # Defines how the inputs (u) affects the perturb_cycle
-    B.weight.data = torch.tensor(
-        [[0, 0], [0, 0], [0, -1], [1, 0]]
-    ).type(default_dtype)
-    
+    B.weight.data = torch.tensor([[0, 0], [0, 0], [0, -1], [1, 0]]).type(default_dtype)
+
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
-    m_0 = (
-        torch.tensor([0.5, 0, 0.5, 0], device=device)
-        .requires_grad_(False)
-        .type(default_dtype)
-    )
+    m_0 = torch.tensor([0.5, 0, 0.5, 0], device=device).requires_grad_(False).type(default_dtype)
 
     """generate input and latent/observations"""
     u = torch.zeros((n_trials, n_time_bins, n_inputs), device=device)
@@ -220,7 +197,6 @@ def train_network():
     z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
 
     for i in range(n_trials):
-        print(f"trial: {i}")
         y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
 
     y_train_dataset = torch.utils.data.TensorDataset(
@@ -228,53 +204,38 @@ def train_network():
         u,
         z_gt,
     )
-    train_dataloader = torch.utils.data.DataLoader(
-        y_train_dataset, batch_size=batch_sz, shuffle=True
-    )
+    train_dataloader = torch.utils.data.DataLoader(y_train_dataset, batch_size=batch_sz, shuffle=True)
 
     """approximation pdf"""
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    # C = LinearPolarToCartesian(
-    #     n_latents, n_neurons, 4, loading=loading, bias=b, device=device
-    # )
-    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(
-        False
-    )
+    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(False)
     C.weight.data = torch.tensor(loading.T).type(torch.float32)
     C.bias.data = torch.tensor(b).type(torch.float32)
 
-    likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=20, device=device)
+    likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz_ms, device=device)
 
     """dynamics module"""
-    # dynamics_fn = utils.build_gru_dynamics_function(n_latents, n_hidden_dynamics, device=device)
+
     def A(x):
         Ax = torch.zeros_like(x)
         for i in range(2):
             r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
             theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
 
-            r_new = r + r * (1 - r**2) * bin_sz
-            theta_new = (
-                theta + 2 * np.pi * 1.5 * bin_sz
-                if i < 2
-                else theta + 2 * np.pi * 0.5 * bin_sz
-            )
+            r_new = r + r * (1 - r) * bin_sz
+            theta_new = theta + 2 * np.pi * 0.2 * bin_sz
 
             Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
             Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
         return Ax
 
     dynamics_fn = A
-    dynamics_mod = DenseGaussianNonlinearDynamics(
-        dynamics_fn, n_latents, approximation_pdf, Q_diag, device=device
-    )
+    dynamics_mod = DenseGaussianNonlinearDynamics(dynamics_fn, n_latents, approximation_pdf, Q_diag, device=device)
 
     """initial condition"""
-    initial_condition_pdf = DenseGaussianInitialCondition(
-        n_latents, m_0, Q_0_diag, device=device
-    )
+    initial_condition_pdf = DenseGaussianInitialCondition(n_latents, m_0, Q_0_diag, device=device)
 
     """local/backward encoder"""
     observation_to_nat = LocalEncoderLRMvn(
@@ -310,7 +271,7 @@ def train_network():
         for dx, (y_tr, u_tr, z_tr) in enumerate(train_dataloader):
             ssm.train()
             opt.zero_grad()
-            loss, z_s, stats = ssm(y_tr, n_samples, u_tr)
+            loss, z_p, stats = ssm(y_tr, n_samples, u_tr)
             avg_loss += loss.item()
             loss.backward()
 
@@ -323,20 +284,15 @@ def train_network():
 
         with torch.no_grad():
             if t % 10 == 0:
-                #z_c = from_polar_to_cart(z_s)
-                z_c = z_s
+                # z_c = from_polar_to_cart(z_s)
 
-                torch.save(
-                    ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt"
-                )
+                torch.save(ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt")
 
                 # If the latent space model spills out the latents in polar dorm,
                 # don't forget to pass z_c instead of z_t
-                plotting.plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch=t)
+                plotting.plot_latents(n_latents, n_samples, blues, z_p, z_gt, epoch=t)
 
-    torch.save(
-        ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt"
-    )
+    torch.save(ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt")
 
     """real-time test"""
     z_f = []
@@ -350,7 +306,7 @@ def train_network():
         z_f.append(z_f_t)
 
     z_f = torch.stack(z_f, dim=2)
-    #z_c = from_polar_to_cart(z_f)
+    # z_c = from_polar_to_cart(z_f)
     z_c = z_f
 
     # If the latent space model spills out the latents in polar dorm,
@@ -366,5 +322,5 @@ if __name__ == "__main__":
     torch.manual_seed(123)
 
     initialize_loading_matrix()
-    #generate_sample(10)
+    # generate_sample(10)
     train_network()

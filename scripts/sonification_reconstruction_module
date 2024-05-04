@@ -112,7 +112,7 @@ def compute_cartesian_input(u, z_p, dt=1e-3):
         z_wo_input[i, 0] = z_p[i, 0] + (z_p[i, 0] * (1 - z_p[i, 0])) * dt
         z_wo_input[i, 1] = z_p[i, 1] + (2 * np.pi * 0.2) * dt
 
-        u_c = polar_to_cartesian(z_w_input) - polar_to_cartesian(z_wo_input)
+    u_c = polar_to_cartesian(z_w_input) - polar_to_cartesian(z_wo_input)
     return u_c
 
 
@@ -132,7 +132,7 @@ def generate_sample(n_time_bins):
 
     # Shut off the input to the perturb_cycle
     # u = 1.5 * np.zeros((n_time_bins, 2))
-    u = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5)
+    u = 1.5 * (np.random.rand(n_time_bins, 2) - 0.5) * 10
     u_repeat = np.repeat(u, 20, axis=0)
 
     reference_cycle = limit_circle(**CYCLE_SLOW)
@@ -158,7 +158,7 @@ def generate_sample(n_time_bins):
 def train_network():
 
     bin_sz = 20e-3
-    device = "cpu"
+    device = "cuda:0"
     data_device = "cpu"
     bin_sz_ms = int(bin_sz * 1e3)
 
@@ -169,22 +169,22 @@ def train_network():
     n_inputs = 2
     n_latents = 4
     n_hidden_current_obs = 128
-    n_samples = 25
+    n_samples = 50
     rank_y = n_latents
 
-    batch_sz = 128
-    n_epochs = 100
+    batch_sz = 64
+    n_epochs = 500
     blues = cm.get_cmap("Blues", n_samples)
 
     """data params"""
-    n_trials = 200
+    n_trials = 250
     n_neurons = 100
-    n_time_bins = 500
+    n_time_bins = 1000
 
     B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(False)
 
     # Defines how the inputs (u) affects the perturb_cycle
-    B.weight.data = torch.tensor([[0, 0], [0, 0], [0, -1], [1, 0]]).type(default_dtype)
+    B.weight.data = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]], device=device).type(default_dtype) * 1e-3
 
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
@@ -211,15 +211,15 @@ def train_network():
 
     """likelihood pdf"""
     C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(False)
-    C.weight.data = torch.tensor(loading.T).type(torch.float32)
-    C.bias.data = torch.tensor(b).type(torch.float32)
+    C.weight.data = torch.tensor(loading.T, device=device).type(torch.float32)
+    C.bias.data = torch.tensor(b, device=device).type(torch.float32)
 
     likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz_ms, device=device)
 
     """dynamics module"""
 
     def A(x):
-        Ax = torch.zeros_like(x)
+        Ax = torch.zeros_like(x, device=device)
         for i in range(2):
             r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
             theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
@@ -290,7 +290,7 @@ def train_network():
 
                 # If the latent space model spills out the latents in polar dorm,
                 # don't forget to pass z_c instead of z_t
-                plotting.plot_latents(n_latents, n_samples, blues, z_p, z_gt, epoch=t)
+                plotting.plot_latents(n_latents, n_samples, blues, z_p.cpu(), z_gt.cpu(), epoch=t)
 
     torch.save(ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt")
 
@@ -312,7 +312,7 @@ def train_network():
     # If the latent space model spills out the latents in polar dorm,
     # don't forget to pass z_c instead of z_t
     with torch.no_grad():
-        plotting.plot_latents(n_latents, n_samples, blues, z_f, z_gt, epoch=n_epochs)
+        plotting.plot_latents(n_latents, n_samples, blues, z_f.cpu(), z_gt.cpu(), epoch=n_epochs)
 
 
 if __name__ == "__main__":
@@ -321,6 +321,6 @@ if __name__ == "__main__":
     np.random.seed(123)
     torch.manual_seed(123)
 
-    initialize_loading_matrix()
+    # initialize_loading_matrix()
     # generate_sample(10)
     train_network()

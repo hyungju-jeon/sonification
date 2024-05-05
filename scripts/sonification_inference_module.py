@@ -278,10 +278,10 @@ class LatentInference:
             )
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 30)
+                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 500)
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.input, 30, self.inferred
+                    self.sum_spikes, self.input, 500, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1
@@ -298,9 +298,9 @@ class LatentInference:
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(dt * 1e9 - (time.perf_counter_ns() - start_t), 0)
 
-            if sleep_duration == 0 and self.verbose:
+            if sleep_duration == 0:
                 print(
-                    f"Dynamical system Iteration took {elapsed_time/1e6}ms which is longer than {dt*1e3} ms"
+                    f"Inference system Iteration took {elapsed_time/1e6}ms which is longer than {dt*1e3} ms"
                 )
             await busy_timer(sleep_duration)
 

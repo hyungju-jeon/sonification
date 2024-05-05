@@ -21,6 +21,10 @@ from utils.ndlib.dynlib import *
 
 from utils import plotting
 
+from utils.reconstruction_utils import *
+
+
+# TODO: create config.yaml
 
 dt = 1e-3
 num_neurons = 50
@@ -284,12 +288,10 @@ def train_network():
 
         with torch.no_grad():
             if t % 10 == 0:
-                # z_c = from_polar_to_cart(z_s)
+                # z_c = polar_to_cartesian(z_s)
 
                 torch.save(ssm.state_dict(), f"results/ssm_state_dict_cart_epoch_{t}.pt")
 
-                # If the latent space model spills out the latents in polar dorm,
-                # don't forget to pass z_c instead of z_t
                 plotting.plot_latents(n_latents, n_samples, blues, z_p.cpu(), z_gt.cpu(), epoch=t)
 
     torch.save(ssm.state_dict(), f"results/ssm_cart_state_dict_cart_epoch_{n_epochs}.pt")
@@ -306,11 +308,8 @@ def train_network():
         z_f.append(z_f_t)
 
     z_f = torch.stack(z_f, dim=2)
-    # z_c = from_polar_to_cart(z_f)
-    z_c = z_f
+    # z_c = polar_to_cartesian(z_f)
 
-    # If the latent space model spills out the latents in polar dorm,
-    # don't forget to pass z_c instead of z_t
     with torch.no_grad():
         plotting.plot_latents(n_latents, n_samples, blues, z_f.cpu(), z_gt.cpu(), epoch=n_epochs)
 

@@ -58,10 +58,8 @@ class MotionEnergy:
             motion_energy_x = np.mean(flow_x)
             motion_energy_y = np.mean(flow_y)
 
-            motion_energy_x = (
-                np.clip(motion_energy_x * 2 * np.pi, -np.pi, np.pi) * 0.001
-            )
-            motion_energy_y = np.clip(motion_energy_y, -1, 1) * 0.01
+            motion_energy_x = np.clip(motion_energy_x * 2 * np.pi, -np.pi, np.pi) * 1
+            motion_energy_y = np.clip(motion_energy_y, -1, 1) * 10
 
             if self.verbose:
                 print(

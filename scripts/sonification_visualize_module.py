@@ -36,6 +36,7 @@ GRID_SIZE_HEIGHT = 50
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
 LATENT_DECAY_FACTOR = [0.995]
+INFERRED_DECAY_FACTOR = [0.95]
 RASTER_DECAY_FACTOR = [0.1]
 
 WALL_RASTER_LEFT = [0]
@@ -726,7 +727,7 @@ class LatentOrbitVisualizer:
         self.data = np.zeros((4, self.L + self.buffer))
 
         self.z = [x for x in range(4) if x not in [self.x]]
-        for i in range(7):
+        for i in range(4):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
                 color=self.color,
@@ -767,6 +768,7 @@ class LatentOrbitVisualizer:
                 self.traces[i].setData(
                     pos=pts,
                 )
+
             # print(f"Frame: {self.count}, Count: {packet_count}")
         self.frame += 1
 
@@ -791,7 +793,7 @@ class InferredOrbitVisualizer:
         self.latent = np.zeros(
             (self.L + self.buffer, 4)
         )  # Initialize firing rates for each neuron
-        self.decay_factor = LATENT_DECAY_FACTOR[0]
+        self.decay_factor = INFERRED_DECAY_FACTOR[0]
         self.x = x_index
         self.y = y_index
         self.traces = dict()
@@ -800,18 +802,18 @@ class InferredOrbitVisualizer:
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
-        # self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
+        self.L = np.where(np.array([x[-1] for x in self.color]) < 0.1)[0][0]
         self.color = self.color[: self.L]
         self.color = self.color[::-1]
         self.data = np.zeros((4, self.L + self.buffer))
 
         self.z = [x for x in range(4) if x not in [self.x]]
-        for i in range(7):
+        for i in range(4):
             self.traces[i] = gl.GLLinePlotItem(
                 pos=np.zeros((self.L, 3)),
                 color=self.color,
                 width=5,
-                antialias=True,
+                antialias=False,
             )
             self.traces[i].setVisible(visible)
             self.plot_widget.addItem(self.traces[i])

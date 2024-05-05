@@ -94,10 +94,12 @@ class LatentDynamics:
 
     def update_RTAM(self):
         for i in range(RTAM_RATIO):
-            if self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO)*i >= 0:
-                self.RTAM_buffer[i, (self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO)*i) % RTAM_LENGTH] = (
-                    self.latent
-                )
+            if self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO) * i >= 0:
+                self.RTAM_buffer[
+                    i,
+                    (self.RTAM_buffer_index - (RTAM_LENGTH // RTAM_RATIO) * i)
+                    % RTAM_LENGTH,
+                ] = self.latent
 
         self.RTAM_buffer_index += 1
         if self.RTAM_buffer_index > RTAM_LENGTH - (RTAM_LENGTH // RTAM_RATIO):
@@ -110,7 +112,7 @@ class LatentDynamics:
         if self.RTAM_set >= RTAM_RATIO:
             self.RTAM_set = 0
         if self.RTAM_available:
-            current_RTAM = self.RTAM_buffer[self.RTAM_set, self.RTAM_set_index,:]
+            current_RTAM = self.RTAM_buffer[self.RTAM_set, self.RTAM_set_index, :]
         else:
             current_RTAM = [0] * 4
         return current_RTAM

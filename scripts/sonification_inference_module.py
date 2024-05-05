@@ -46,20 +46,13 @@ dt = 20e-3  # 1ms for dynamic system update
 SPIKES = [np.zeros((100, 1))]
 INPUT_X = [0]
 INPUT_Y = [0]
-loading_matrix_fast_name = (
-    "/Users/hyungju/Desktop/hyungju/Project/sonification/data/loading_matrix_fast.npz"
-)
-loading_matrix_slow_name = (
-    "/Users/hyungju/Desktop/hyungju/Project/sonification/data/loading_matrix_slow.npz"
-)
+loading_matrix_slow_name = "./data/loading_matrix_slow.npz"
 
-param = np.load(loading_matrix_fast_name, allow_pickle=True)
-C_fast, b_fast = block_diag(*param["C"]), param["b"].flatten()
 param = np.load(loading_matrix_slow_name, allow_pickle=True)
 C_slow, b_slow = block_diag(*param["C"]), param["b"].flatten()
 
-loading = block_diag(C_fast, C_slow)
-b = np.vstack([b_fast, b_slow]).flatten()
+loading = C_slow
+b = b_slow
 
 DISPATCHER = Dispatcher()
 
@@ -77,6 +70,73 @@ def ms_to_ns(ms):
         float: The time in nanoseconds.
     """
     return ms * 1e6
+
+
+def polar_to_cartesian(z_p):
+    """
+    Converts complex numbers from polar form to cartesian form.
+
+    Args:
+        z_p (torch.Tensor): Complex numbers in polar form with shape (batch_size, channels, height, width, 2).
+
+    Returns:
+        torch.Tensor: Complex numbers in cartesian form with shape (batch_size, channels, height, width, 2).
+    """
+    if isinstance(z_p, np.ndarray):
+        z_p = torch.tensor(z_p)
+    z_c = torch.zeros_like(z_p)
+
+    for i in range(z_p.shape[-1] // 2):
+        z_c[..., 2 * i] = z_p[..., 2 * i] * torch.cos(z_p[..., 2 * i + 1])
+        z_c[..., 2 * i + 1] = z_p[..., 2 * i] * torch.sin(z_p[..., 2 * i + 1])
+
+    return z_c
+
+
+def cartesian_to_polar(z_c):
+    """
+    Converts complex numbers from cartesian form to polar form.
+
+    Args:
+        z_c (torch.Tensor): Complex numbers in cartesian form with shape (batch_size, channels, height, width, 2).
+
+    Returns:
+        torch.Tensor: Complex numbers in polar form with shape (batch_size, channels, height, width, 2).
+    """
+    if isinstance(z_c, np.ndarray):
+        z_c = torch.tensor(z_c)
+    z_p = torch.zeros_like(z_c)
+
+    for i in range(z_c.shape[-1] // 2):
+        z_p[..., 2 * i] = torch.sqrt(z_c[..., 2 * i] ** 2 + z_c[..., 2 * i + 1] ** 2)
+        z_p[..., 2 * i + 1] = torch.atan2(z_c[..., 2 * i + 1], z_c[..., 2 * i])
+
+    return z_p
+
+
+def compute_cartesian_input(u, z_p, dt=1e-3):
+    """
+    Computes the cartesian input.
+
+    Args:
+        u (torch.Tensor): The input tensor.
+        z_c (torch.Tensor): The latent tensor in cartesian form.
+
+    Returns:
+        torch.Tensor: The cartesian input tensor.
+    """
+    u_c = np.zeros_like(u)
+    z_w_input = np.zeros_like(z_p)
+    z_wo_input = np.zeros_like(z_p)
+    for i in range(u.shape[0]):
+        z_w_input[i, 0] = z_p[i, 0] + (z_p[i, 0] * (1 - z_p[i, 0]) - u[i, 1]) * dt
+        z_w_input[i, 1] = z_p[i, 1] + (2 * np.pi * 0.2 + u[i, 0]) * dt
+
+        z_wo_input[i, 0] = z_p[i, 0] + (z_p[i, 0] * (1 - z_p[i, 0])) * dt
+        z_wo_input[i, 1] = z_p[i, 1] + (2 * np.pi * 0.2) * dt
+
+    u_c = polar_to_cartesian(z_w_input) - polar_to_cartesian(z_wo_input)
+    return u_c
 
 
 class LatentInference:
@@ -100,29 +160,27 @@ class LatentInference:
 
         """hyperparameters"""
         n_inputs = 2
-        n_latents = 8
+        n_latents = 4
         n_hidden_current_obs = 128
-        n_samples = 25
         rank_y = n_latents
 
-        batch_sz = 256
-
         """data params"""
-        n_trials = 1000
         n_neurons = 100
-        n_time_bins = 100
 
         B = torch.nn.Linear(
             n_inputs, n_latents, bias=False, device=device
         ).requires_grad_(False)
-        B.weight.data = torch.tensor(
-            [[0, 0], [0, 0], [0, -1], [1, 0], [0, 0], [0, 0], [0, -1], [1, 0]]
-        ).type(default_dtype)
+
+        # Defines how the inputs (u) affects the perturb_cycle
+        B.weight.data = (
+            torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]]).type(default_dtype) * 1e-3
+        )
+
         Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
         R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
         m_0 = (
-            torch.tensor([0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0], device=device)
+            torch.tensor([0.5, 0, 0.5, 0], device=device)
             .requires_grad_(False)
             .type(default_dtype)
         )
@@ -137,20 +195,21 @@ class LatentInference:
         C.weight.data = torch.tensor(loading.T).type(torch.float32)
         C.bias.data = torch.tensor(b).type(torch.float32)
 
-        likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz, device=device)
+        likelihood_pdf = PoissonLikelihood(C, n_neurons, delta=bin_sz_ms, device=device)
 
         """dynamics module"""
 
         def A(x):
             Ax = torch.zeros_like(x)
-            Ax[:, :, 0] = x[:, :, 0] + x[:, :, 0] * (1 - x[:, :, 0] ** 2) * bin_sz
-            Ax[:, :, 1] = x[:, :, 1] + 2 * np.pi * 1.5 * bin_sz
-            Ax[:, :, 2] = x[:, :, 2] + x[:, :, 2] * (1 - x[:, :, 2] ** 2) * bin_sz
-            Ax[:, :, 3] = x[:, :, 3] + 2 * np.pi * 1.5 * bin_sz
-            Ax[:, :, 4] = x[:, :, 4] + x[:, :, 4] * (1 - x[:, :, 4] ** 2) * bin_sz
-            Ax[:, :, 5] = x[:, :, 5] + 2 * np.pi * 0.5 * bin_sz
-            Ax[:, :, 6] = x[:, :, 6] + x[:, :, 6] * (1 - x[:, :, 6] ** 2) * bin_sz
-            Ax[:, :, 7] = x[:, :, 7] + 2 * np.pi * 0.5 * bin_sz
+            for i in range(2):
+                r = torch.sqrt(x[:, :, 2 * i] ** 2 + x[:, :, 2 * i + 1] ** 2)
+                theta = torch.atan2(x[:, :, 2 * i + 1], x[:, :, 2 * i])
+
+                r_new = r + r * (1 - r) * bin_sz
+                theta_new = theta + 2 * np.pi * 0.2 * bin_sz
+
+                Ax[:, :, 2 * i] = r_new * torch.cos(theta_new)
+                Ax[:, :, 2 * i + 1] = r_new * torch.sin(theta_new)
             return Ax
 
         dynamics_fn = A
@@ -185,27 +244,27 @@ class LatentInference:
             nl_filter,
             device=device,
         )
-        self.ssm.load_state_dict(torch.load(f"data/ssm_state_dict_big_epoch_20.pt"))
+        self.ssm.load_state_dict(
+            torch.load(
+                f"results/ssm_cart_state_dict_cart_epoch_500.pt",
+                map_location=torch.device("cpu"),
+            )
+        )
         self.sum_spikes = torch.zeros((1, 100))
         self.input = torch.zeros((1, 2))
 
         self.MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
         self.LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERRED_LATENT_PORT)
-        self.prev = np.zeros(8)
+        self.prev = np.zeros(4)
 
     def update_spikes(self, spikes):
-        self.spikes[-1] = spikes
+        self.spikes[-1] = spikes * 1.0
         self.spikes = np.roll(self.spikes, -1, axis=0)
 
+
     def get_inference(self):
-        result_polar = np.mean(self.inferred.detach().numpy(), axis=0).flatten()
-        result_cart = np.zeros_like(result_polar)
-        for i in range(4):
-            result_cart[2 * i] = result_polar[2 * i] * np.cos(result_polar[2 * i + 1])
-            result_cart[2 * i + 1] = result_polar[2 * i] * np.sin(
-                result_polar[2 * i + 1]
-            )
-        return result_cart
+        result_cartesian = np.mean(self.inferred.detach().numpy(), axis=0)
+        return result_cartesian
 
     async def start(self):
         await self.setup_server()
@@ -214,44 +273,15 @@ class LatentInference:
             self.sum_spikes[0, :] = torch.from_numpy(np.sum(self.spikes, axis=0)).type(
                 torch.float32
             )
-
-            self.input = torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(torch.float32)
-            self.cart_input = torch.zeros((1, 4))
-            self.trajectory = TRAJECTORY[0]
-            for i in range(4):
-                if i == 1:
-                    r = np.sqrt(
-                        self.trajectory[2 * i] ** 2 + self.trajectory[2 * i + 1] ** 2
-                    )
-                    theta = np.arctan2(
-                        self.trajectory[2 * i + 1], self.trajectory[2 * i]
-                    )
-                    x, y = r * np.cos(theta), r * np.sin(theta)
-                    x_n, y_n = (r - self.input[1]) * np.cos(theta + self.input[0]), (
-                        r - self.input[1]
-                    ) * np.sin(theta + self.input[0])
-                    self.cart_input[0, 0] = torch.from_numpy(x_n - x)
-                    self.cart_input[0, 1] = torch.from_numpy(y_n - y)
-                elif i == 3:
-                    r = np.sqrt(
-                        self.trajectory[2 * i] ** 2 + self.trajectory[2 * i + 1] ** 2
-                    )
-                    theta = np.arctan2(
-                        self.trajectory[2 * i + 1], self.trajectory[2 * i]
-                    )
-                    x, y = r * np.cos(theta), r * np.sin(theta)
-                    x_n, y_n = (r - self.input[1]) * np.cos(theta + self.input[0]), (
-                        r - self.input[1]
-                    ) * np.sin(theta + self.input[0])
-                    self.cart_input[0, 2] = torch.from_numpy(x_n - x)
-                    self.cart_input[0, 3] = torch.from_numpy(y_n - y)
-
+            self.input[0, :] = polar_to_cartesian(
+                torch.tensor([INPUT_X[0], INPUT_Y[0]]).type(torch.float32)
+            )
 
             if self.t == 0:
-                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 10)
+                stats_t, z_f_t = self.ssm.step_0(self.sum_spikes, self.input, 30)
             else:
                 stats_t, z_f_t = self.ssm.step_t(
-                    self.sum_spikes, self.input, 10, self.inferred
+                    self.sum_spikes, self.input, 30, self.inferred
                 )
             self.inferred = z_f_t
             self.t += 1
@@ -259,11 +289,11 @@ class LatentInference:
             if self.inferred is not None:
                 self.MAX_OSCsender.send_message(
                     "/INFERRED_TRAJECTORY",
-                    [self.get_inference().tolist()],
+                    self.get_inference().tolist(),
                 )
                 self.LOCAL_OSCsender.send_message(
                     "/INFERRED_TRAJECTORY",
-                    [self.get_inference().tolist()],
+                    self.get_inference().tolist(),
                 )
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(dt * 1e9 - (time.perf_counter_ns() - start_t), 0)
@@ -288,7 +318,7 @@ class LatentInference:
             print("Address already in use")
 
     def latent_to_inference_osc_handler(self, address, *args):
-        self.update_spikes(args[0])
+        self.update_spikes(np.array(args))
         SPIKES[0] = args[0]
         if self.verbose:
             print(f"Received update for SPIKES : {args}")

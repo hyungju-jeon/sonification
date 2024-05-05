@@ -67,7 +67,7 @@ async def init_main():
         spike_sending_loop(ms_to_ns(1), slow_spike_block, verbose=False),
         true_latent_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
         phase_diff_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
-        fake_latent_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
+        # fake_latent_sending_loop(ms_to_ns(1), slow_latent_block, verbose=False),
     )
 
 

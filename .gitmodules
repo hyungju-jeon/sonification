@@ -4,3 +4,6 @@
 [submodule "utils/pseyepy"]
 	path = utils/pseyepy
 	url = https://github.com/mahmoud-elmakki/pseyepy.git
+[submodule "Azure-Kinect-Python"]
+	path = Azure-Kinect-Python
+	url = https://github.com/hexops-graveyard/Azure-Kinect-Python.git

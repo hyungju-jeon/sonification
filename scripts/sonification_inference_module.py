@@ -261,7 +261,6 @@ class LatentInference:
         self.spikes[-1] = spikes * 1.0
         self.spikes = np.roll(self.spikes, -1, axis=0)
 
-
     def get_inference(self):
         result_cartesian = np.mean(self.inferred.detach().numpy(), axis=0)
         return result_cartesian
@@ -289,12 +288,13 @@ class LatentInference:
             if self.inferred is not None:
                 self.MAX_OSCsender.send_message(
                     "/INFERRED_TRAJECTORY",
-                    self.get_inference().tolist(),
+                    self.get_inference()[0].tolist(),
                 )
                 self.LOCAL_OSCsender.send_message(
                     "/INFERRED_TRAJECTORY",
                     self.get_inference().tolist(),
                 )
+                print(self.get_inference()[0].tolist())
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(dt * 1e9 - (time.perf_counter_ns() - start_t), 0)
 

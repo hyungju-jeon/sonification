@@ -78,7 +78,7 @@ async def true_latent_sending_loop(interval_ns, slow_block, verbose=False):
             "/TRAJECTORY",
             np.concatenate([slow_block.get_state()], axis=0).tolist(),
         )
-        # print([slow_block.get_state()[0],slow_block.get_RTAM()[0]])
+
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
 

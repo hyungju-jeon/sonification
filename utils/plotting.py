@@ -27,6 +27,37 @@ def plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch):
     plt.close()
 
 
+def animate_motion_energy(
+        frame_index, motion_energy_x, motion_energy_xs, motion_energy_y, motion_energy_ys, ts, axs
+        ):
+    '''
+    This function is called periodically from FuncAnimation in the plot function
+    in the Motion Energy class.
+    '''
+
+    # Add x and y to lists
+    motion_energy_xs.append(motion_energy_x)
+    motion_energy_ys.append(motion_energy_y)
+    ts.append(frame_index)
+
+    # Limit x and y lists to 20 items
+    #xs = xs[-20:]
+    #ys = ys[-20:]
+
+    # Draw x and y lists
+    axs.clear()
+    axs.plot(ts, motion_energy_xs, color='b', label='motion_energy_x')
+    axs.plot(ts, motion_energy_ys, color='y', label='motion_energy_y')
+
+    # Format plot
+    plt.xticks(rotation=45, ha='right')
+    plt.subplots_adjust(bottom=0.30)
+    plt.title('Motion Energy Evolution')
+    plt.ylabel('Optical Flow')
+
+
+
+
 
 
 

@@ -3,6 +3,9 @@ import numpy as np
 import time
 import asyncio
 import sys
+
+import matplotlib.pyplot as plt
+
 from pythonosc.udp_client import SimpleUDPClient
 from scripts.check_UDP_latency import elapsed_time_update
 from sonification_communication_module import *
@@ -15,6 +18,37 @@ FRAME_HEIGHT = 90
 
 class MotionEnergy:
     def __init__(self, verbose=False):
+
+        self.x_buffer_size = 60
+        self.x_buffer = np.zeros(self.x_buffer_size)
+
+        self.y_buffer_size = 60
+        self.y_buffer = np.zeros(self.y_buffer_size)
+
+        self.x_current_index = 0
+        self.y_current_index = 0
+
+        self.max_optical_flow = 0
+
+        self.fig, self.ax = plt.subplots()
+        plt.title('Optical Flow over time')
+        plt.xlabel('Frame Window')
+        plt.ylabel('Optical Flow')
+
+        self.x_motion_line, = self.ax.plot(self.x_buffer)
+        self.x_motion_line.set_label('Optical Flow X')
+
+        self.y_motion_line, = self.ax.plot(self.y_buffer)
+        self.y_motion_line.set_label('Optical Flow Y')
+
+        if self.x_buffer_size > self.y_buffer_size:
+            self.ax.set_xlim(0, self.x_buffer_size - 1)
+        else:
+            self.ax.set_xlim(0, self.y_buffer_size - 1)
+
+        # Enable interactive mode
+        plt.ion()
+    
         self.FRAME = cv2.VideoCapture(0)
         self.FRAME.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         self.FRAME.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
@@ -69,6 +103,10 @@ class MotionEnergy:
             # Display current frame
             # cv2.imshow("Motion Analysis", curr_frame)
             # self.display_text(curr_frame, motion_energy_x, motion_energy_y)
+
+            # Plot optical flow evolution
+            self.plot(motion_energy_x, motion_energy_y)
+            plt.show()
 
             # Update previous frame and grayscale image
             self.prev_gray = curr_gray.copy()
@@ -125,6 +163,49 @@ class MotionEnergy:
 
         if self.verbose:
             print(f"Sending packet: /MOTION_ENERGY {[x, y]}")
+
+
+    def update_x_buffer(self, motion_energy_x, index):
+        self.x_buffer[index] = motion_energy_x
+
+        if np.abs(motion_energy_x) > self.max_optical_flow:
+            self.max_optical_flow = np.abs(motion_energy_x)
+
+        self.ax.set_ylim(- self.max_optical_flow, self.max_optical_flow)
+
+        return (index + 1) % self.x_buffer_size
+    
+
+    def update_y_buffer(self, motion_energy_y, index):
+        self.y_buffer[index] = motion_energy_y
+
+        if np.abs(motion_energy_y) > self.max_optical_flow:
+            self.max_optical_flow = np.abs(motion_energy_y)
+
+        self.ax.set_ylim(- self.max_optical_flow, self.max_optical_flow)
+
+        return (index + 1) % self.y_buffer_size
+
+
+    # Function to update the plot line with the current buffer
+    def update_plot(self):
+
+        self.x_motion_line.set_ydata(self.x_buffer)
+    
+        self.y_motion_line.set_ydata(self.y_buffer)
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
+    def plot(self, motion_energy_x, motion_energy_y):
+
+        # Update each buffer with the new motion energy value
+        self.x_current_index = self.update_x_buffer(motion_energy_x, self.x_current_index)
+        self.y_current_index = self.update_y_buffer(motion_energy_y, self.y_current_index)
+        
+        # Update the plot with the current buffer data
+        self.update_plot()
 
 
 if __name__ == "__main__":

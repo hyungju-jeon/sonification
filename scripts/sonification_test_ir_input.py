@@ -40,7 +40,7 @@ plt.ylabel(r"$\exp(x)$")
 plt.title("Exponential function")
 
 plt.show()
-'''
+
 
 w = 1
 b = 0.5
@@ -52,3 +52,17 @@ plt.figure()
 plt.plot(x, y)
 
 plt.show()
+
+'''
+
+a = - 50
+b = 50
+
+x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+
+x[0] = a + ((x[0] - min(x)) * ((b - a)) / (max(x) - min(x)))
+x[9] = a + ((x[9] - min(x)) * ((b - a)) / (max(x) - min(x)))
+
+print(min(x))
+print(max(x))
+

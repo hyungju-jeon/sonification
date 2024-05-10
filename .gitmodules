@@ -7,3 +7,6 @@
 [submodule "utils/Azure-Kinect-Python"]
 	path = utils/Azure-Kinect-Python
 	url = https://github.com/hexops-graveyard/Azure-Kinect-Python.git
+[submodule "utils/pyKinectAzure"]
+	path = utils/pyKinectAzure
+	url = https://github.com/ibaiGorordo/pyKinectAzure.git

@@ -294,7 +294,6 @@ class LatentInference:
                     "/INFERRED_TRAJECTORY",
                     self.get_inference().tolist(),
                 )
-                print(self.get_inference()[0].tolist())
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(dt * 1e9 - (time.perf_counter_ns() - start_t), 0)
 

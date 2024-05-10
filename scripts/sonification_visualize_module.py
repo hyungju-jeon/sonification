@@ -2,7 +2,6 @@ import asyncio
 import signal
 import sys
 import threading
-from tkinter import SE
 
 import numpy as np
 import pyqtgraph as pg
@@ -20,8 +19,8 @@ cdict = {
     "green": [[0.0, 1.0, 1.0], [1.0, 0.7, 0.7]],
     "blue": [[0.0, 0.2, 0.2], [1.0, 0.0, 0.0]],
 }
-newcmp = LinearSegmentedColormap("testCmap", segmentdata=cdict, N=256)
-RGBA = np.round(newcmp(np.linspace(0, 1, 256)) * 255).astype(int)
+GRADIENT_CMAP = LinearSegmentedColormap("testCmap", segmentdata=cdict, N=1024)
+RGBA = np.round(GRADIENT_CMAP(np.linspace(0, 1, 256)) * 255).astype(int)
 
 packet_count = 0
 num_neurons = 100
@@ -29,13 +28,13 @@ SPIKES = [np.zeros(num_neurons)]
 LATENT = [np.zeros(4)]
 INFERRED = [np.zeros(4)]
 
-ASPECT_RATIO = 0.7
+ASPECT_RATIO = 1
 GRID_SIZE_WIDTH = 100
 GRID_SIZE_HEIGHT = 50
 
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
-LATENT_DECAY_FACTOR = [0.995]
+LATENT_DECAY_FACTOR = [1]
 INFERRED_DECAY_FACTOR = [0.95]
 RASTER_DECAY_FACTOR = [0.1]
 
@@ -43,7 +42,7 @@ WALL_RASTER_LEFT = [0]
 WALL_RASTER_RIGHT = [0]
 WALL_RASTER_TOP = [0]
 WALL_RASTER_BOTTOM = [1]
-WALL_SPIKE = [0]
+WALL_SPIKE = [1]
 WALL_TRUE_LATENT = [1]
 WALL_INFERRED_LATENT = [1]
 
@@ -59,6 +58,10 @@ INFERRED_LATENT_COLOR = [255, 176, 0, 255]
 
 SCALE_FACTOR = GRID_SIZE_HEIGHT / 4
 pg.setConfigOptions(useOpenGL=True)
+
+
+def compute_decay_factor(d):
+    pass
 
 
 class SpikeDisc2DVisualizer:
@@ -414,6 +417,121 @@ class RasterWithTrace3DVisualizer:
         self.frame += 1
 
 
+class RasterCircularWithTrace3DVisualizer:
+    def __init__(self, visible=True, max_level=5, widget=None):
+        # Create a PyQtGraph window
+        if widget is None:
+            self.app = QApplication([])
+            self.plot_widget = gl.GLViewWidget()
+            self.plot_widget.setGeometry(0, 0, 1900, 1200)
+            self.plot_widget.opts["distance"] = 600
+            self.plot_widget.show()
+        else:
+            self.plot_widget = widget
+            self.plot_widget.show()
+
+        self.num_neurons = num_neurons
+        self.num_image = 20
+        self.neuron_per_image = self.num_neurons // self.num_image
+        self.L = 1000
+        self.buffer = 1000
+        self.firing_rates = np.zeros((self.L + self.buffer, num_neurons))
+        self.decay_factor = RASTER_DECAY_FACTOR[0]  # Exponential decay factor
+        self.max_level = max_level
+        self.visible = visible
+
+        raster_texture = pg.makeRGBA(
+            self.firing_rates[:, : self.neuron_per_image], levels=(0, max_level)
+        )[0]
+        self.imgs = [gl.GLImageItem(raster_texture) for _ in range(self.num_image)]
+
+        # Arrange each image in a circle
+        for i in range(self.num_image):
+            self.slicer = slice(0, 100)
+            scale_factor = [
+                -1,
+                10
+                * GRID_SIZE_WIDTH
+                * np.tan(np.pi / self.num_image)
+                / self.neuron_per_image,
+                1,
+            ]
+            self.imgs[i].scale(*scale_factor)
+            self.imgs[i].rotate(360 / self.num_image * i + 110, 1, 0, 0)
+            self.imgs[i].translate(
+                -GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
+                5 * GRID_SIZE_WIDTH * np.cos(2 * np.pi * i / self.num_image),
+                5 * GRID_SIZE_WIDTH * np.sin(2 * np.pi * i / self.num_image),
+            )
+
+            self.imgs[i].setVisible(self.visible)
+            self.plot_widget.addItem(self.imgs[i])
+
+        self.frame = 0
+        self.count = 0
+
+        # Create a custom lookup table (LUT) with green-neon color
+        self.lut = []
+        for i in range(256):
+            self.lut.append([51, 255, 51, i])  # Add alpha channel as the last value
+
+    def animation(self):
+        if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
+            QApplication.instance().exec_()
+
+    def update_lut(self, color):
+        for i in range(256):
+            self.lut[i] = [color[0], color[1], color[2], i]
+
+    def update(self):
+        if self.frame >= self.L + self.buffer:
+            self.firing_rates = np.roll(self.firing_rates, -self.buffer, axis=0)
+            self.frame = self.L
+
+        if self.frame > 0:
+            self.firing_rates[self.frame, :] = (
+                self.firing_rates[self.frame - 1, :] * self.decay_factor
+            )
+
+        for i, firing_event in enumerate(SPIKES[0][self.slicer]):
+            if firing_event > 0:  # If there's firing
+                self.firing_rates[self.frame, i] += 5  # Instantly increase firing rate
+
+        if self.frame % 10 == 0 and self.visible:
+            if self.count >= 1000:
+                for n_img in range(self.num_image):
+                    raster_texture = pg.makeRGBA(
+                        self.firing_rates[
+                            np.fmax(0, self.frame - self.L) : self.frame,
+                            n_img
+                            * self.neuron_per_image : (n_img + 1)
+                            * self.neuron_per_image,
+                        ],
+                        levels=(0, self.max_level),
+                        lut=self.lut,
+                    )[0]
+                    self.imgs[n_img].setData(raster_texture)
+            else:
+                rolled_rate = self.firing_rates[: self.L, :]
+                rolled_rate = np.roll(rolled_rate, 1000 - self.count, axis=0)
+
+                for n_img in range(self.num_image):
+                    raster_texture = pg.makeRGBA(
+                        rolled_rate[
+                            :,
+                            n_img
+                            * self.neuron_per_image : (n_img + 1)
+                            * self.neuron_per_image,
+                        ],
+                        levels=(0, self.max_level),
+                        lut=self.lut,
+                    )[0]
+                    self.imgs[n_img].setData(raster_texture)
+
+        self.count += 1
+        self.frame += 1
+
+
 class SpikeBall3DVisualizer:
     def __init__(self, target_location=None, visible=False, widget=None):
         self.num_neurons = num_neurons
@@ -613,7 +731,7 @@ class LatentCycleVisualizer:
         self.frame += 1
 
 
-class LatentOrbitCeilingVisualizer:
+class LatentCeilingVisualizer:
     def __init__(self, x_index, y_index, color, visible=False, widget=None):
         # Create a PyQtGraph window
         if widget is None:
@@ -638,7 +756,14 @@ class LatentOrbitCeilingVisualizer:
         self.y = y_index
         self.traces = dict()
         self.heads = dict()
-        self.color = np.repeat(np.array(color)[np.newaxis, :] / 255, self.L, axis=0)
+        if isinstance(color, LinearSegmentedColormap):
+            self.colormap = color
+            self.color = np.round(color(np.linspace(0, color.N, self.L)) * 255).astype(
+                int
+            )
+        else:
+            self.colormap = None
+            self.color = np.repeat(np.array(color)[np.newaxis, :] / 255, self.L, axis=0)
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
@@ -692,7 +817,7 @@ class LatentOrbitCeilingVisualizer:
         self.frame += 1
 
 
-class LatentOrbitVisualizer:
+class TrueLatentVisualizer:
     def __init__(self, x_index, y_index, color, visible=False, widget=None):
         # Create a PyQtGraph window
         if widget is None:
@@ -707,7 +832,7 @@ class LatentOrbitVisualizer:
         else:
             self.plot_widget = widget
 
-        self.L = 1500
+        self.L = 5000
         self.buffer = 1500
         self.latent = np.zeros(
             (self.L + self.buffer, 4)
@@ -717,7 +842,12 @@ class LatentOrbitVisualizer:
         self.y = y_index
         self.traces = dict()
         self.heads = dict()
-        self.color = np.repeat(np.array(color)[np.newaxis, :] / 255, self.L, axis=0)
+        if isinstance(color, LinearSegmentedColormap):
+            self.colormap = color
+            self.color = color(np.linspace(0, 1, self.L))
+        else:
+            self.colormap = None
+            self.color = np.repeat(np.array(color)[np.newaxis, :] / 255, self.L, axis=0)
 
         for i in range(1, self.L):
             self.color[i][-1] = self.color[i - 1][-1] * self.decay_factor
@@ -768,12 +898,10 @@ class LatentOrbitVisualizer:
                 self.traces[i].setData(
                     pos=pts,
                 )
-
-            # print(f"Frame: {self.count}, Count: {packet_count}")
         self.frame += 1
 
 
-class InferredOrbitVisualizer:
+class InferredLatentVisualizer:
     def __init__(self, x_index, y_index, color, visible=False, widget=None):
         # Create a PyQtGraph window
         if widget is None:
@@ -874,8 +1002,8 @@ target_location = np.vstack(
 ).T
 target_location[:, 1:] *= 0.7
 target_location[:, 1] *= ASPECT_RATIO
-target_location[raster_sort_idx < 50, 1] += GRID_SIZE_HEIGHT / 2
-target_location[raster_sort_idx >= 50, 1] -= GRID_SIZE_HEIGHT / 2
+# target_location[raster_sort_idx < 50, 1] += GRID_SIZE_HEIGHT / 2
+# target_location[raster_sort_idx >= 50, 1] -= GRID_SIZE_HEIGHT / 2
 
 app = QApplication([])
 # -----------------------------Visualization on the wall-----------------------------
@@ -887,89 +1015,89 @@ monitor = QDesktopWidget().screenGeometry(1)
 parent_widget.move(monitor.left(), monitor.top())
 # parent_widget.showFullScreen()
 
-wall_plot_widget = gl.GLViewWidget()
-wall_plot_widget.setGeometry(0, 0, 1920, 1200)
-wall_plot_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
-wall_plot_widget.opts["distance"] = 75
-wall_plot_widget.opts["fov"] = 90
-wall_plot_widget.opts["elevation"] = 0
-wall_plot_widget.opts["azimuth"] = 0
+wall_widget = gl.GLViewWidget()
+wall_widget.setGeometry(0, 0, 1920, 1200)
+wall_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
+wall_widget.opts["distance"] = 75
+wall_widget.opts["fov"] = 90
+wall_widget.opts["elevation"] = 0
+wall_widget.opts["azimuth"] = 0
 
 g_center = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_HEIGHT, GRID_SIZE_WIDTH, 1))
 g_center.rotate(90, 0, 1, 0)
 g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2, 0, 0)
-wall_plot_widget.addItem(g_center)
+wall_widget.addItem(g_center)
 g_left = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_left.rotate(90, 1, 0, 0)
 g_left.translate(GRID_SIZE_HEIGHT / 2, -GRID_SIZE_WIDTH / 2, 0)
-wall_plot_widget.addItem(g_left)
+wall_widget.addItem(g_left)
 g_floor = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_WIDTH, 1))
 g_floor.translate(GRID_SIZE_HEIGHT / 2, 0, -GRID_SIZE_HEIGHT / 2 + 0)
-wall_plot_widget.addItem(g_floor)
+wall_widget.addItem(g_floor)
 g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_right.rotate(-90, 1, 0, 0)
 g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)
-wall_plot_widget.addItem(g_right)
+wall_widget.addItem(g_right)
 
-layout.addWidget(wall_plot_widget, 1, 0)
+layout.addWidget(wall_widget, 1, 0)
 parent_widget.show()
 
 vis_wall_raster_left = RasterWithTrace3DVisualizer(
-    orientation="left", visible=WALL_RASTER_LEFT[0], widget=wall_plot_widget
+    orientation="left", visible=WALL_RASTER_LEFT[0], widget=wall_widget
 )
 vis_wall_raster_right = RasterWithTrace3DVisualizer(
-    orientation="right", visible=WALL_RASTER_RIGHT[0], widget=wall_plot_widget
+    orientation="right", visible=WALL_RASTER_RIGHT[0], widget=wall_widget
 )
 vis_wall_raster_top = RasterWithTrace3DVisualizer(
-    orientation="top", visible=WALL_RASTER_TOP[0], widget=wall_plot_widget
+    orientation="top", visible=WALL_RASTER_TOP[0], widget=wall_widget
 )
 vis_wall_raster_bottom = RasterWithTrace3DVisualizer(
-    orientation="bot", visible=WALL_RASTER_BOTTOM[0], widget=wall_plot_widget
+    orientation="bot", visible=WALL_RASTER_BOTTOM[0], widget=wall_widget
 )
 vis_wall_spike = SpikeBall3DVisualizer(
-    target_location=target_location, visible=WALL_SPIKE[0], widget=wall_plot_widget
+    target_location=target_location, visible=WALL_SPIKE[0], widget=wall_widget
 )
-vis_wall_true_latent = LatentOrbitVisualizer(
-    0, 1, color=TRUE_LATENT_COLOR, visible=WALL_TRUE_LATENT[0], widget=wall_plot_widget
+vis_wall_true_latent = TrueLatentVisualizer(
+    0, 1, color=GRADIENT_CMAP, visible=WALL_TRUE_LATENT[0], widget=wall_widget
 )
-vis_wall_inferred_latent = InferredOrbitVisualizer(
+vis_wall_inferred_latent = InferredLatentVisualizer(
     1,
     1,
     color=INFERRED_LATENT_COLOR,
     visible=WALL_INFERRED_LATENT[0],
-    widget=wall_plot_widget,
+    widget=wall_widget,
 )
 
 # ---------------------------Visualization on the Ceiling-----------------------------
-ceiling_plot_widget = gl.GLViewWidget()
-ceiling_plot_widget.setGeometry(0, 0, 1920, 1200)
-ceiling_plot_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
-ceiling_plot_widget.opts["distance"] = 55
-ceiling_plot_widget.opts["fov"] = 90
-ceiling_plot_widget.opts["elevation"] = 0
-ceiling_plot_widget.opts["azimuth"] = 0
+ceiling_widget = gl.GLViewWidget()
+ceiling_widget.setGeometry(0, 0, 1920, 1200)
+ceiling_widget.opts["center"] = QtGui.QVector3D(-30, 0, 0)
+ceiling_widget.opts["distance"] = 55
+ceiling_widget.opts["fov"] = 90
+ceiling_widget.opts["elevation"] = 0
+ceiling_widget.opts["azimuth"] = 0
 
 monitor = QDesktopWidget().screenGeometry(0)
-ceiling_plot_widget.move(monitor.left(), monitor.top())
+ceiling_widget.move(monitor.left(), monitor.top())
 # ceiling_plot_widget.showFullScreen()
-ceiling_plot_widget.show()
+ceiling_widget.show()
 
-vis_ceiling_true_latent = LatentOrbitCeilingVisualizer(
+vis_ceiling_true_latent = LatentCeilingVisualizer(
     0,
     1,
-    color=TRUE_LATENT_COLOR,
+    color=GRADIENT_CMAP,
     visible=CEILING_TRUE_LATENT[0],
-    widget=ceiling_plot_widget,
+    widget=ceiling_widget,
 )
-vis_ceiling_inferred_latent = InferredOrbitVisualizer(
+vis_ceiling_inferred_latent = InferredLatentVisualizer(
     0,
     1,
-    color=TRUE_LATENT_COLOR,
+    color=INFERRED_LATENT_COLOR,
     visible=CEILING_INFERRED_LATENT[0],
-    widget=ceiling_plot_widget,
+    widget=ceiling_widget,
 )
-vis_ceiling_raster = RasterWithTrace3DVisualizer(
-    orientation="center", visible=CEILING_RASTER[0], widget=ceiling_plot_widget
+vis_ceiling_raster = RasterCircularWithTrace3DVisualizer(
+    visible=CEILING_RASTER[0], widget=ceiling_widget
 )
 # ---------------------------OSC mapping-----------------------------
 
@@ -1034,7 +1162,8 @@ class SpikePacer(QtCore.QObject):
         for trace in vis_wall_true_latent.traces.items():
             trace[1].setVisible(args[0])
         if args[0]:
-            vis_wall_inferred_latent.bias = GRID_SIZE_HEIGHT / 2
+            # vis_wall_inferred_latent.bias = GRID_SIZE_HEIGHT / 2
+            vis_wall_inferred_latent.bias = 0
         else:
             vis_wall_inferred_latent.bias = 0
 
@@ -1043,7 +1172,8 @@ class SpikePacer(QtCore.QObject):
         for trace in vis_ceiling_true_latent.traces.items():
             trace[1].setVisible(args[0])
         if args[0]:
-            vis_ceiling_inferred_latent.bias = GRID_SIZE_HEIGHT / 2
+            # vis_ceiling_inferred_latent.bias = GRID_SIZE_HEIGHT / 2
+            vis_ceiling_inferred_latent.bias = 0
         else:
             vis_ceiling_inferred_latent.bias = 0
 
@@ -1052,7 +1182,7 @@ class SpikePacer(QtCore.QObject):
         for trace in vis_wall_inferred_latent.traces.items():
             trace[1].setVisible(args[0])
         if args[0]:
-            vis_wall_true_latent.traj_pos_bias = -GRID_SIZE_HEIGHT / 2
+            vis_wall_true_latent.traj_pos_bias = 0
         else:
             vis_wall_true_latent.traj_pos_bias = 0
 
@@ -1061,7 +1191,7 @@ class SpikePacer(QtCore.QObject):
         for trace in vis_ceiling_inferred_latent.traces.items():
             trace[1].setVisible(args[0])
         if args[0]:
-            vis_ceiling_true_latent.bias = -GRID_SIZE_HEIGHT / 2
+            vis_ceiling_true_latent.bias = 0
         else:
             vis_ceiling_true_latent.bias = 0
 

@@ -70,10 +70,10 @@ class MotionEnergy:
         self.tx = 0
         self.ty = 0
 
-        self.max_of_x = 8 if not self.CALIBRATE else 0
-        self.min_of_x = - 8 if not self.CALIBRATE else 0
-        self.max_of_y = 8 if not self.CALIBRATE else 0
-        self.min_of_y = - 8 if not self.CALIBRATE else 0
+        self.max_of_x = 10 if not self.CALIBRATE else 0
+        self.min_of_x = - 10 if not self.CALIBRATE else 0
+        self.max_of_y = 10 if not self.CALIBRATE else 0
+        self.min_of_y = - 10 if not self.CALIBRATE else 0
 
         # z-score value of a 95% precentile
         self.z_score = 1.645
@@ -390,10 +390,10 @@ class MotionEnergy:
         #a_y = - self.z_score
         #b_y = self.z_score
 
-        a_x = 0.9 * self.min_of_x
-        b_x = 0.9 * self.max_of_x
-        a_y = 0.9 * self.min_of_y
-        b_y = 0.9 * self.max_of_y
+        a_x = -8
+        b_x = 8
+        a_y = -8
+        b_y = 8
 
         # motion_energy_x = self.min_of_x + ((motion_energy_x - a_x) * (self.max_of_x - self.min_of_x) / (b_x - a_x))
         # motion_energy_y = self.min_of_y + ((motion_energy_y - a_y) * (self.max_of_y - self.min_of_y) / (b_y - a_y))

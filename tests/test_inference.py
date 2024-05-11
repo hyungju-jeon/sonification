@@ -1,6 +1,3 @@
-import numpy as np
-import os
-import random
 # %%
 
 import os
@@ -15,10 +12,16 @@ from tqdm import tqdm
 from scipy.linalg import block_diag
 
 from filter.approximations import DenseGaussianApproximations
-from filter.dynamics import DenseGaussianInitialCondition, DenseGaussianNonlinearDynamics
+from filter.dynamics import (
+    DenseGaussianInitialCondition,
+    DenseGaussianNonlinearDynamics,
+)
 from filter.encoders import LocalEncoderLRMvn
 from filter.likelihoods import PoissonLikelihood
-from filter.nonlinear_smoother import FullRankNonlinearStateSpaceModelFilter, NonlinearFilter
+from filter.nonlinear_smoother import (
+    FullRankNonlinearStateSpaceModelFilter,
+    NonlinearFilter,
+)
 from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
 
@@ -30,13 +33,6 @@ from utils.reconstruction_utils import *
 dt = 1e-3
 num_neurons = 50
 
-CYCLE_FAST = {
-    "x0": np.array([0.5, 0]),
-    "d": 1,
-    "w": 2 * np.pi * 1.5,
-    "Q": None,
-    "dt": dt,
-}
 CYCLE_SLOW = {
     "x0": np.array([0.5, 0]),
     "d": 1,
@@ -54,12 +50,11 @@ loading = C_slow
 b = b_slow
 
 
-def validate():
+def load_ssm():
 
     bin_sz = 20e-3
-    #device = "cuda:0"
+    # device = "cuda:0"
     device = "cpu"
-    data_device = "cpu"
     bin_sz_ms = int(bin_sz * 1e3)
 
     default_dtype = torch.float32
@@ -81,36 +76,34 @@ def validate():
     n_neurons = 100
     n_time_bins = 1000
 
-    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(False)
+    B = torch.nn.Linear(n_inputs, n_latents, bias=False, device=device).requires_grad_(
+        False
+    )
 
     # Defines how the inputs (u) affects the perturb_cycle
-    B.weight.data = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]], device=device).type(default_dtype) * 1e-3
+    B.weight.data = (
+        torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]], device=device).type(
+            default_dtype
+        )
+        * 1e-3
+    )
 
     Q_0_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     Q_diag = torch.ones(n_latents, device=device).requires_grad_(False) * 1e-2
     R_diag = torch.ones(n_neurons, device=device).requires_grad_(False)
-    m_0 = torch.tensor([0.5, 0, 0.5, 0], device=device).requires_grad_(False).type(default_dtype)
-
-    """generate input and latent/observations"""
-    u = torch.zeros((n_trials, n_time_bins, n_inputs), device=device)
-    y_gt = torch.zeros((n_trials, n_time_bins, n_neurons), device=device)
-    z_gt = torch.zeros((n_trials, n_time_bins, n_latents), device=device)
-
-    for i in range(n_trials):
-        y_gt[i], z_gt[i], u[i] = generate_sample(n_time_bins)
-
-    y_test_dataset = torch.utils.data.TensorDataset(
-        y_gt,
-        u,
-        z_gt,
+    m_0 = (
+        torch.tensor([0.5, 0, 0.5, 0], device=device)
+        .requires_grad_(False)
+        .type(default_dtype)
     )
-    test_dataloader = torch.utils.data.DataLoader(y_test_dataset, batch_size=batch_sz, shuffle=True)
 
     """approximation pdf"""
     approximation_pdf = DenseGaussianApproximations(n_latents, device)
 
     """likelihood pdf"""
-    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(False)
+    C = torch.nn.Linear(n_latents, n_neurons, bias=True, device=device).requires_grad_(
+        False
+    )
     C.weight.data = torch.tensor(loading.T, device=device).type(torch.float32)
     C.bias.data = torch.tensor(b, device=device).type(torch.float32)
 
@@ -132,10 +125,14 @@ def validate():
         return Ax
 
     dynamics_fn = A
-    dynamics_mod = DenseGaussianNonlinearDynamics(dynamics_fn, n_latents, approximation_pdf, Q_diag, device=device)
+    dynamics_mod = DenseGaussianNonlinearDynamics(
+        dynamics_fn, n_latents, approximation_pdf, Q_diag, device=device
+    )
 
     """initial condition"""
-    initial_condition_pdf = DenseGaussianInitialCondition(n_latents, m_0, Q_0_diag, device=device)
+    initial_condition_pdf = DenseGaussianInitialCondition(
+        n_latents, m_0, Q_0_diag, device=device
+    )
 
     """local/backward encoder"""
     observation_to_nat = LocalEncoderLRMvn(
@@ -160,18 +157,55 @@ def validate():
         device=device,
     )
 
-    ssm.load_state_dict(torch.load("results/ssm_cart_state_dict_cart_epoch_500.pt", map_location=torch.device('cpu')))
-    # ssm.load_state_dict(torch.load("results/ssm_cart_state_dict_cart_epoch_500.pt"))
-    ssm.eval()
+    ssm.load_state_dict(
+        torch.load(
+            "results/ssm_cart_state_dict_cart_epoch_500.pt",
+            map_location=torch.device("cpu"),
+        )
+    )
 
-    """real-time test"""
+    return ssm
+
+
+def generate_spikes(z_t, C, b):
+    rates = np.exp(z_t @ C + b)
+
+    return np.random.poisson(rates)
+
+
+if __name__ == "__main__":
+    n_time_bins = 5000
+    num_samples = 20
+    reference_cycle = limit_circle(**CYCLE_SLOW)
+    perturb_cycle = limit_circle(**CYCLE_SLOW)
+    coupled_cycle = two_limit_circle(reference_cycle, perturb_cycle)
+
+    # Generate Latent
+    z_gt = coupled_cycle.generate_trajectory(n_time_bins)
+    y_gt = generate_spikes(z_gt, loading, b)
+    y_gt = torch.tensor(y_gt, dtype=torch.float32)
+    # define moving sum of y_gt with window size 20
+    y_sum = (
+        torch.nn.functional.avg_pool1d(y_gt.T.unsqueeze(0), 20, stride=1).squeeze(0).T
+    ) * 20
+
+    ssm = load_ssm()
+
     z_f = []
-
     for t in range(n_time_bins):
         if t == 0:
-            stats_t, z_f_t = ssm.step_0(y_gt[:, t], u[:, t], n_samples)
+            stats_t, z_f_t = ssm.step_0(
+                y_sum[t, :][None, :],
+                torch.tensor([0, 0]).type(torch.float32),
+                num_samples,
+            )
         else:
-            stats_t, z_f_t = ssm.step_t(y_gt[:, t], u[:, t], n_samples, z_f[t - 1])
+            stats_t, z_f_t = ssm.step_t(
+                y_sum[t, :][None, :],
+                torch.tensor([0, 0]).type(torch.float32),
+                num_samples,
+                z_f[t - 1],
+            )
 
         z_f.append(z_f_t)
 
@@ -181,8 +215,6 @@ def validate():
     with torch.no_grad():
         # Why does it still plot sinusoidals tho we are using the polar z_t?
         # (see results/epoch_500.png) Note in the plot both z_gt and z-f are in cart, right?
-        plotting.plot_latents(n_latents, n_samples, blues, z_f.cpu(), z_gt.cpu(), epoch=n_epochs)
-
-
-if __name__ == '__main__':
-    validate()
+        plotting.plot_latents(
+            n_latents, n_samples, blues, z_f.cpu(), z_gt.cpu(), epoch=n_epochs
+        )

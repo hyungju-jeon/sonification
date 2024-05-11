@@ -5,7 +5,6 @@ import asyncio
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.osc_server import AsyncIOOSCUDPServer
-from scripts.check_max_communication_limit import INPUT
 
 from utils.ndlib.dynlib import *
 from utils.ndlib.dslib import *

@@ -36,7 +36,6 @@ from filter.nonlinear_smoother import (
     FullRankNonlinearStateSpaceModelFilter,
     NonlinearFilter,
 )
-from scripts.check_max_communication_limit import INPUT
 from utils.ndlib.dslib import *
 from utils.ndlib.dynlib import *
 

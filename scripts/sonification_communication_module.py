@@ -8,16 +8,13 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 
 # ----------------------- OSC Related Stuff ---------------------- #
 # OSC ips / ports
-global SERVER_IP, MOTION_ENERGY_PORT, MAX_INPUT_PORT, SPIKE_PORT, SPIKE_PORT_2, TRUE_LATENT_PORT, INFERRED_LATENT_PORT, DISPATCHER, TIMER_DELAY
 LOCAL_SERVER = "127.0.0.1"
 MAX_SERVER = "127.0.0.1"
 SIGNAL_PORT = 1110
 MOTION_ENERGY_PORT = 1111
 SPIKE_VISUALIZE_PORT = 1112
 SPIKE_INFERENCE_PORT = 1113
-TRUE_LATENT_PORT = 1114
-INFERRED_LATENT_PORT = 1114
-INFERENCE_LATENT_PORT = 1115
+LATENT_PORT = 1114
 MAX_INPUT_PORT = 1211
 MAX_CONTROL_PORT = 1211
 MAX_OUTPUT_PORT = 1212
@@ -58,8 +55,7 @@ async def true_latent_sending_loop(interval_ns, slow_block, verbose=False):
     """
     # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
     MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
-    LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, TRUE_LATENT_PORT)
-    INFERENCE_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
+    LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, LATENT_PORT)
     while True:
         start_t = time.perf_counter_ns()
         MAX_OSCsender.send_message(
@@ -74,10 +70,6 @@ async def true_latent_sending_loop(interval_ns, slow_block, verbose=False):
             "/TRAJECTORY",
             np.concatenate([slow_block.get_state()], axis=0).tolist(),
         )
-        INFERENCE_OSCsender.send_message(
-            "/TRAJECTORY",
-            np.concatenate([slow_block.get_state()], axis=0).tolist(),
-        )
 
         elapsed_time = time.perf_counter_ns() - start_t
         sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
@@ -85,45 +77,6 @@ async def true_latent_sending_loop(interval_ns, slow_block, verbose=False):
         if sleep_duration == 0 and verbose:
             print(
                 f"True Trajectory Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
-            )
-        await busy_timer(interval_ns)
-
-
-async def fake_latent_sending_loop(interval_ns, slow_block, verbose=False):
-    """
-    Sends packets of data to Max/MSP at regular intervals.
-
-    Args:
-        interval (float): The interval between each packet sending.
-
-    Returns:
-        None
-    """
-    # global TRAJECTORY, PHASE, SPIKE, PHASE_DIFF
-    MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
-    LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERRED_LATENT_PORT)
-    INFERENCE_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERENCE_LATENT_PORT)
-    while True:
-        start_t = time.perf_counter_ns()
-        MAX_OSCsender.send_message(
-            "/INFERRED_TRAJECTORY",
-            np.concatenate(
-                [slow_block.get_state() + np.random.randn(4) * 0.02], axis=0
-            ).tolist(),
-        )
-
-        LOCAL_OSCsender.send_message(
-            "/INFERRED_TRAJECTORY",
-            np.concatenate(
-                [slow_block.get_state() + np.random.randn(4) * 0.02], axis=0
-            ).tolist(),
-        )
-        elapsed_time = time.perf_counter_ns() - start_t
-        sleep_duration = np.fmax(interval_ns - (time.perf_counter_ns() - start_t), 0)
-
-        if sleep_duration == 0 and verbose:
-            print(
-                f"Fake Trajectory Communication took {elapsed_time/1e6} ms longer than {interval_ns/1e6} ms"
             )
         await busy_timer(interval_ns)
 

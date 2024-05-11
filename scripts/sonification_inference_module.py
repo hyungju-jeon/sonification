@@ -1,35 +1,23 @@
 # %%
 import asyncio
-import os
-import random
 import time
 
-import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from lightning.pytorch.loggers import CSVLogger
 from matplotlib.pylab import f
-from numpy import random
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 from scipy.linalg import block_diag
-from scipy.signal import convolve2d
 
 from sonification_communication_module import *
-from tqdm import tqdm
-
-import filter.utils as utils
 from filter.approximations import DenseGaussianApproximations
 from filter.dynamics import (
     DenseGaussianInitialCondition,
     DenseGaussianNonlinearDynamics,
 )
-from filter.encoders import BackwardEncoderLRMvn, LocalEncoderLRMvn
+from filter.encoders import LocalEncoderLRMvn
 from filter.likelihoods import (
-    GaussianLikelihood,
-    LinearPolarToCartesian,
     PoissonLikelihood,
 )
 from filter.nonlinear_smoother import (
@@ -253,7 +241,7 @@ class LatentInference:
         self.input = torch.zeros((1, 2))
 
         self.MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
-        self.LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, INFERRED_LATENT_PORT)
+        self.LOCAL_OSCsender = SimpleUDPClient(LOCAL_SERVER, LATENT_PORT)
         self.prev = np.zeros(4)
 
     def update_spikes(self, spikes):

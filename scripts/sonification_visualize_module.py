@@ -1270,10 +1270,10 @@ async def init_main():
         asyncio.get_event_loop(),
     )
     server_latent = AsyncIOOSCUDPServer(
-        (LOCAL_SERVER, TRUE_LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
+        (LOCAL_SERVER, LATENT_PORT), dispatcher_python, asyncio.get_event_loop()
     )
     server_inferred_latent = AsyncIOOSCUDPServer(
-        (LOCAL_SERVER, INFERRED_LATENT_PORT),
+        (LOCAL_SERVER, LATENT_PORT),
         dispatcher_python,
         asyncio.get_event_loop(),
     )

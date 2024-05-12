@@ -43,7 +43,7 @@ INFERRED_LATENT_LENGTH = [5000]
 SWITCH_RASTER_VISUALIZE = [1]
 SWITCH_TRUE_LATENT_VISUALIZE = [1]
 SWITCH_INFERRED_LATENT_VISUALIZE = [1]
-SWITCH_SPIKE_VISUALIZE = [0]
+SWITCH_SPIKE_VISUALIZE = [1]
 SWITCH_SPIKE_ORGANIZATION = [0]
 SWITCH_GW_COLOR = [0]
 
@@ -139,10 +139,12 @@ class RasterCircularVisualizer:
 
         for i, firing_event in enumerate(SPIKES[0][self.slicer]):
             if firing_event > 0:  # If there's firing
-                self.firing_rates[self.frame, i] += 5  # Instantly increase firing rate
+                self.firing_rates[
+                    self.frame, i
+                ] += self.max_level  # Instantly increase firing rate
 
         if self.frame % 10 == 0 and self.visible:
-            if self.count >= 1000:
+            if self.count >= self.L:
                 for n_img in range(self.num_images):
                     raster_texture = pg.makeRGBA(
                         self.firing_rates[
@@ -176,7 +178,7 @@ class RasterCircularVisualizer:
         self.frame += 1
 
 
-class SpikeBall3DVisualizer:
+class SpikeBallVisualizer:
     def __init__(self, target_location=None, visible=False, widget=None):
         self.num_neurons = num_neurons
         # Create a PyQtGraph window
@@ -189,7 +191,6 @@ class SpikeBall3DVisualizer:
             self.plot_widget.opts["elevation"] = -5
             self.plot_widget.opts["azimuth"] = 45
             self.plot_widget.show()
-
         else:
             self.plot_widget = widget
 
@@ -255,7 +256,7 @@ class SpikeBall3DVisualizer:
         Args:
             index (int): The index of the spike to trigger.
         """
-        if SWITCH_SPIKE_VISUALIZE[0] == 1:
+        if self.visible == 1:
             self.size[index] += DISC_RADIUS_INC[0] * 1.0
         else:
             self.size[index] = 0
@@ -572,7 +573,7 @@ floor_widget.opts["fov"] = 90
 floor_widget.opts["elevation"] = 0
 floor_widget.opts["azimuth"] = 0
 
-vis_spike = SpikeBall3DVisualizer(
+vis_spike = SpikeBallVisualizer(
     target_location=target_location,
     visible=SWITCH_SPIKE_VISUALIZE[0],
     widget=floor_widget,

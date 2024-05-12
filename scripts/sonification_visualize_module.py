@@ -259,6 +259,8 @@ class SpikeBallVisualizer:
         self.count = 0
         self.visible = visible
 
+        self.MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+
     def animation(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
             QApplication.instance().exec_()
@@ -291,6 +293,21 @@ class SpikeBallVisualizer:
             self.estimate_velocity()
             if any(SPIKES[0] > 0):
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
+
+            self.theta = (
+                (
+                    np.arctan2(
+                        self.centroid_positions[:, 2], self.centroid_positions[:, 1]
+                    )
+                    + np.pi
+                )
+                * 360
+                / (2 * np.pi)
+            )
+            self.MAX_OSCsender.send_message(
+                "/SPIKE_POSITION",
+                self.theta[raster_sort_idx_inv].tolist(),
+            )
         self.frame += 1
         self.count += 1
 
@@ -591,12 +608,13 @@ b = np.vstack([b_slow]).flatten()
 theta = np.arctan2(C[1, :], C[0, :])
 
 raster_sort_idx = np.argsort(theta)
+raster_sort_idx_inv = np.argsort(raster_sort_idx)
 theta = theta[raster_sort_idx]
 target_location = np.vstack(
     [
-        np.ones_like(theta) * (-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2),
-        np.cos(theta) * GRID_SIZE_HEIGHT / 2,
-        np.sin(theta) * GRID_SIZE_HEIGHT / 2,
+        np.ones_like(theta) * VIS_DEPTH,
+        np.cos(theta) * VIS_RADIUS * 2,
+        np.sin(theta) * VIS_RADIUS * 2,
     ]
 ).T
 
@@ -621,13 +639,16 @@ g_center = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_HEIGHT, GRID_SIZE_WIDTH, 1))
 g_center.rotate(90, 0, 1, 0)
 g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2, 0, 0)
 wall_widget.addItem(g_center)
+
 g_left = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_left.rotate(90, 1, 0, 0)
 g_left.translate(GRID_SIZE_HEIGHT / 2, -GRID_SIZE_WIDTH / 2, 0)
 wall_widget.addItem(g_left)
+
 g_floor = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_WIDTH, 1))
 g_floor.translate(GRID_SIZE_HEIGHT / 2, 0, -GRID_SIZE_HEIGHT / 2 + 0)
 wall_widget.addItem(g_floor)
+
 g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
 g_right.rotate(-90, 1, 0, 0)
 g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)

@@ -218,6 +218,8 @@ class SpikeBallVisualizer:
         self.count = 0
         self.visible = visible
 
+        self.MAX_OSCsender = SimpleUDPClient(MAX_SERVER, MAX_OUTPUT_PORT)
+
     def animation(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
             QApplication.instance().exec_()
@@ -243,9 +245,23 @@ class SpikeBallVisualizer:
         if self.frame % 10 == 0:
             self.shrink_circle()
             self.estimate_velocity()
-
             if any(SPIKES[0] > 0):
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
+
+            self.theta = (
+                (
+                    np.arctan2(
+                        self.centroid_positions[:, 2], self.centroid_positions[:, 1]
+                    )
+                    + np.pi
+                )
+                * 360
+                / (2 * np.pi)
+            )
+            self.MAX_OSCsender.send_message(
+                "/SPIKE_POSITION",
+                self.theta[raster_sort_idx_inv].tolist(),
+            )
         self.frame += 1
         self.count += 1
 
@@ -546,6 +562,7 @@ b = np.vstack([b_slow]).flatten()
 theta = np.arctan2(C[1, :], C[0, :])
 
 raster_sort_idx = np.argsort(theta)
+raster_sort_idx_inv = np.argsort(raster_sort_idx)
 theta = theta[raster_sort_idx]
 target_location = np.vstack(
     [

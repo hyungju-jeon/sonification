@@ -10,7 +10,6 @@ from sympy.physics.vector import curl
 from PIL import Image as im
 
 
-
 flow_x = np.load('./flow_arrays/flow_x.npy')
 flow_y = np.load('./flow_arrays/flow_y.npy')
 
@@ -39,6 +38,9 @@ def plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch):
 
 def plot_vector_field(flow_x, flow_y):
 
+    flow_x = np.array(flow_x)
+    flow_y = np.array(flow_y)
+
     # 1D arrays 
     x = np.arange(0 , flow_x.shape[1], 1) 
     y = np.arange(0 , flow_x.shape[0], 1) 
@@ -63,6 +65,9 @@ def plot_vector_field(flow_x, flow_y):
 
 
 def calc_divergence(flow_x, flow_y):
+
+    flow_x = np.array(flow_x)
+    flow_y = np.array(flow_y)
     
     x = np.arange(0 , flow_x.shape[1], 1) 
     y = np.arange(0 , flow_x.shape[0], 1) 
@@ -78,9 +83,12 @@ def calc_divergence(flow_x, flow_y):
     div = dU + dV
 
     return div
-
+'''
 
 def calc_curl(flow_x, flow_y):
+
+    flow_x = np.array(flow_x)
+    flow_y = np.array(flow_y)
     
     x = np.arange(0 , flow_x.shape[1], 1) 
     y = np.arange(0 , flow_x.shape[0], 1) 
@@ -100,6 +108,8 @@ def calc_curl(flow_x, flow_y):
     c = curl(F, R)  
 
     return c
+    '''
+
 
 
 # Define the partial derivatives of Fx and Fy with respect to x and y
@@ -110,7 +120,10 @@ def partial_y(Fy, h=1e-6):
     return (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0)) / (2 * h)
 
 # Calculate the curl of the vector field
-def curl(flow_x, flow_y):
+def calc_curl(flow_x, flow_y):
+
+    flow_x = np.array(flow_x)
+    flow_y = np.array(flow_y)
 
     # Create a grid of points (x, y)
     x = np.arange(0 , flow_x.shape[1], 1) 
@@ -123,15 +136,20 @@ def curl(flow_x, flow_y):
 
     curl_x = partial_y(V) - partial_x(U)
     curl_y = partial_x(U) - partial_y(V)
-
-    total_curl = np.sqrt(curl_x**2 + curl_y**2)
+    '''
+    curl_x = (curl_x - curl_x.min()) / (curl_x.max() - curl_x.min())
+    curl_y = (curl_y - curl_y.min()) / (curl_y.max() - curl_y.min())
+    '''
+    total_curl = np.sqrt(curl_x ** 2 + curl_y ** 2)
 
     return total_curl
 
 # Calculate the curl of the vector field at each point in the grid
-total_curl = curl(flow_x, flow_y)
+total_curl = calc_curl(flow_x, flow_y)
 
 print(total_curl.shape)
+print(total_curl.min())
+print(total_curl.max())
 
 '''
 plot_vector_field(flow_x, flow_y)

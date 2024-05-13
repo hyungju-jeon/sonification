@@ -13,9 +13,10 @@ from PIL import Image as im
 from pseyepy import Camera, Display, Stream
 
 from utils import plotting
+from utils import optical_flow
 
 from pythonosc.udp_client import SimpleUDPClient
-from scripts.check_UDP_latency import elapsed_time_update
+from tests.check_UDP_latency import elapsed_time_update
 from sonification_communication_module import *
 
 
@@ -61,6 +62,8 @@ class MotionEnergy:
         
         self.CALIBRATE = False
 
+        self.gain = 10
+
         self.mean_of_x = 0
         self.mean_of_y = 0
 
@@ -70,10 +73,10 @@ class MotionEnergy:
         self.tx = 0
         self.ty = 0
 
-        self.max_of_x = 8 if not self.CALIBRATE else 0
-        self.min_of_x = - 8 if not self.CALIBRATE else 0
-        self.max_of_y = 8 if not self.CALIBRATE else 0
-        self.min_of_y = - 8 if not self.CALIBRATE else 0
+        self.max_of_x = 4.5 if not self.CALIBRATE else 0
+        self.min_of_x = - 4.5 if not self.CALIBRATE else 0
+        self.max_of_y = 4.5 if not self.CALIBRATE else 0
+        self.min_of_y = - 5.5 if not self.CALIBRATE else 0
 
         # z-score value of a 95% precentile
         self.z_score = 1.645
@@ -113,13 +116,17 @@ class MotionEnergy:
         else:
             self.ax.set_xlim(0, self.y_buffer_size - 1)
 
+        self.field_fig, self.field_axs, = plt.subplots(figsize=(10, 10))
+        self.X, self.Y = np.meshgrid(np.arange(0 , 320, 1) , np.arange(0 , 240, 1) )
+
+        self.stream = self.field_axs.streamplot(self.X, self.Y, np.zeros_like(self.X), np.zeros_like(self.Y), density=1.4, linewidth=None, color='#A23BEC') 
+
         # Enable interactive mode
         plt.ion()
 
-        
         try:
             # 63 is the max possible gain.
-            self.FRAME = IRVideoCapture(0, gain=63)
+            self.FRAME = IRVideoCapture(0, gain=self.gain)
         except:
             print("Error: Failed to open camera")
             exit()
@@ -169,15 +176,20 @@ class MotionEnergy:
             self.flow_window[0] = self.flow_window[1]
             self.flow_window[1] = flow
 
-            flow = self.flow_window[0] + self.flow_window[1]
+            flow = 0.5 * (self.flow_window[0] + self.flow_window[1])
 
             # Extract horizontal/vertical component of flow
             flow_x = flow[..., 0]
             flow_y = flow[..., 1]
 
+            #self.plot_vector_field(flow_x, 'X')
+
+            flow_x = optical_flow.calc_divergence(flow_x, flow_y)
+            flow_y = optical_flow.calc_curl(flow_x, flow_y)
+
             # Compute horizontal motion energy
-            motion_energy_x = 0.5 * np.mean(flow_x)
-            motion_energy_y = 0.5 * np.mean(flow_y)
+            motion_energy_x = np.mean(flow_x)
+            motion_energy_y = np.mean(flow_y)
 
             if not self.CALIBRATE:
                 motion_energy_x, motion_energy_y = self.min_max_normalize_of(motion_energy_x, motion_energy_y)
@@ -348,6 +360,21 @@ class MotionEnergy:
         # Update the plot with the current buffer data
         self.update_plot()
 
+
+    def plot_vector_field(self, arr, dir):
+
+        # Assign vector directions
+        U = arr if dir == 'Y' else np.zeros(arr.shape) 
+        V = arr if dir == 'X' else np.zeros(arr.shape)
+
+        self.stream.lines.set_segments([])
+
+        self.stream = self.field_axs.streamplot(self.X, self.Y, U, V, density=1.4, linewidth=None, color='#A23BEC') 
+
+        # Show plot with grid 
+        plt.grid() 
+        plt.show()
+
     
     def update_mean(self, motion_energy_x, motion_energy_y):
 
@@ -390,10 +417,10 @@ class MotionEnergy:
         #a_y = - self.z_score
         #b_y = self.z_score
 
-        a_x = -7
-        b_x = 7
-        a_y = -7
-        b_y = 7
+        a_x = -4
+        b_x = 4
+        a_y = -4
+        b_y = 4
 
         # motion_energy_x = self.min_of_x + ((motion_energy_x - a_x) * (self.max_of_x - self.min_of_x) / (b_x - a_x))
         # motion_energy_y = self.min_of_y + ((motion_energy_y - a_y) * (self.max_of_y - self.min_of_y) / (b_y - a_y))

@@ -135,7 +135,9 @@ class LatentDynamics:
 
         try:
             server_motion = AsyncIOOSCUDPServer(
-                (LOCAL_SERVER, MOTION_ENERGY_PORT), DISPATCHER, asyncio.get_event_loop()
+                ("192.168.0.102", MOTION_ENERGY_PORT),
+                DISPATCHER,
+                asyncio.get_event_loop(),
             )
             transport_motion, _ = await server_motion.create_serve_endpoint()
         except:

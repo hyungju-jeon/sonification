@@ -294,12 +294,22 @@ class LatentInference:
         # python-osc method for establishing the UDP communication with max
         # Connect server if address not in use (check with try catch)
         try:
-            server_motion = AsyncIOOSCUDPServer(
+            server_spike = AsyncIOOSCUDPServer(
                 (LOCAL_SERVER, SPIKE_INFERENCE_PORT),
                 DISPATCHER,
                 asyncio.get_event_loop(),
             )
-            transport_motion, _ = await server_motion.create_serve_endpoint()
+            await server_spike.create_serve_endpoint()
+        except:
+            print("Address already in use")
+
+        try:
+            server_motion = AsyncIOOSCUDPServer(
+                ("192.168.0.102", SPIKE_INFERENCE_PORT),
+                DISPATCHER,
+                asyncio.get_event_loop(),
+            )
+            await server_motion.create_serve_endpoint()
         except:
             print("Address already in use")
 
@@ -314,14 +324,6 @@ class LatentInference:
         INPUT_Y[0] = args[1]
         if self.verbose:
             print(f"Received update for INPUT_X, INPUT_Y : {args}")
-
-
-async def init_main():
-    inference = LatentInference()
-    await asyncio.gather(
-        inference.start(),
-        inferred_latent_sending_loop(ms_to_ns(200), inference, verbose=True),
-    )
 
 
 if __name__ == "__main__":

@@ -47,11 +47,11 @@ SWITCH_WALL_RASTER_LEFT = [1]
 SWITCH_WALL_RASTER_RIGHT = [1]
 SWITCH_WALL_RASTER_TOP = [1]
 SWITCH_WALL_RASTER_BOTTOM = [1]
-SWITCH_WALL_SPIKE = [1]
+SWITCH_WALL_SPIKE = [0]
 SWITCH_WALL_TRUE_LATENT = [1]
 SWITCH_WALL_INFERRED_LATENT = [1]
 
-SWITCH_CEILING_RASTER = [0]
+SWITCH_CEILING_RASTER = [1]
 SWITCH_CEILING_SPIKE = [1]
 
 SWITCH_SPIKE_ORGANIZATION = [1]
@@ -64,7 +64,7 @@ GREEN_COLOR = [51, 255, 51, 255]
 AMBER_COLOR = [255, 176, 0, 255]
 
 SCALE_FACTOR = GRID_SIZE_HEIGHT / 4
-pg.setConfigOptions(useOpenGL=True)
+pg.setConfigOptions(useOpenGL=False)
 
 
 def compute_decay_factor(d):
@@ -295,15 +295,9 @@ class SpikeBallVisualizer:
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
 
             self.theta = (
-                (
-                    np.arctan2(
-                        self.centroid_positions[:, 2], self.centroid_positions[:, 1]
-                    )
-                    + np.pi
-                )
-                * 360
-                / (2 * np.pi)
-            )
+                np.arctan2(self.centroid_positions[:, 2], self.centroid_positions[:, 1])
+                + 2 * np.pi
+            ) % (2 * np.pi)
             self.MAX_OSCsender.send_message(
                 "/SPIKE_POSITION",
                 self.theta[raster_sort_idx_inv].tolist(),
@@ -705,7 +699,7 @@ ceiling_widget.opts["azimuth"] = 0
 
 vis_ceiling_spike = SpikeBallVisualizer(
     target_location=target_location,
-    visible=SWITCH_WALL_SPIKE[0],
+    visible=SWITCH_CEILING_SPIKE[0],
     widget=ceiling_widget,
 )
 vis_ceiling_raster = RasterPlaneVisualizer(

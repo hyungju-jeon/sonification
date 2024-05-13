@@ -15,18 +15,19 @@ if __name__ == "__main__":
     files = [
         "./scripts/sonification_main.py",
         # "./scripts/sonification_ir_input_module.py",
-        # "./scripts/sonification_input_module.py",
+        "./scripts/sonification_kinect_input_module.py",
         "./scripts/sonification_visualize_manifold_module.py",
         "./scripts/sonification_inference_module.py",
     ]
     # Check if there is a process running with name containing 'python'
     for process in psutil.process_iter(["name"]):
-        if "python" in process.info["name"]:
-            cmdline = process.cmdline()
-            if len(cmdline) > 1:
-                if cmdline[1] in files:
-                    print(f"Killing process {process.pid}")
-                    process.kill()
+        if process.info["name"] is not None:
+            if "python" in process.info["name"]:
+                cmdline = process.cmdline()
+                if len(cmdline) > 1:
+                    if cmdline[1] in files:
+                        print(f"Killing process {process.pid}")
+                        process.kill()
 
     prcesses = dict()
 

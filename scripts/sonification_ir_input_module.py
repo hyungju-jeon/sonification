@@ -182,10 +182,10 @@ class MotionEnergy:
             flow_x = flow[..., 0]
             flow_y = flow[..., 1]
 
-            #self.plot_vector_field(flow_x, 'X')
+            # self.optical_flow.plot_vector_field(flow_x, 'X')
 
-            flow_x = optical_flow.calc_divergence(flow_x, flow_y)
-            flow_y = optical_flow.calc_curl(flow_x, flow_y)
+            # flow_x = optical_flow.calc_divergence(flow_x, flow_y)
+            # flow_y = optical_flow.calc_curl(flow_x, flow_y)
 
             # Compute horizontal motion energy
             motion_energy_x = np.mean(flow_x)

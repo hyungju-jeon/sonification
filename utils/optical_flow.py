@@ -10,8 +10,8 @@ from sympy.physics.vector import curl
 from PIL import Image as im
 
 
-flow_x = np.load('./flow_arrays/flow_x.npy')
-flow_y = np.load('./flow_arrays/flow_y.npy')
+#flow_x = np.load('./flow_arrays/flow_x.npy')
+#flow_y = np.load('./flow_arrays/flow_y.npy')
 
 
 def plot_latents(n_latents, n_samples, blues, z_c, z_gt, epoch):
@@ -145,11 +145,11 @@ def calc_curl(flow_x, flow_y):
     return total_curl
 
 # Calculate the curl of the vector field at each point in the grid
-total_curl = calc_curl(flow_x, flow_y)
+#total_curl = calc_curl(flow_x, flow_y)
 
-print(total_curl.shape)
-print(total_curl.min())
-print(total_curl.max())
+#print(total_curl.shape)
+#print(total_curl.min())
+#print(total_curl.max())
 
 '''
 plot_vector_field(flow_x, flow_y)

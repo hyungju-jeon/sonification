@@ -14,8 +14,7 @@ def worker(file):
 if __name__ == "__main__":
     files = [
         "./scripts/sonification_main.py",
-        # "./scripts/sonification_ir_input_module.py",
-        "./scripts/sonification_input_module.py",
+        "./scripts/sonification_ir_input_module.py",
         "./scripts/sonification_visualize_module.py",
         "./scripts/sonification_inference_module.py",
     ]

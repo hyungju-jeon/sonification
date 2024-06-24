@@ -2,15 +2,15 @@ import cv2
 import numpy as np
 import time
 import asyncio
-import sys
+import sys, os
 
 import matplotlib.pyplot as plt
 
 from pythonosc.udp_client import SimpleUDPClient
-from scripts.check_UDP_latency import elapsed_time_update
 from sonification_communication_module import *
 
 import pykinect_azure as pykinect
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 # ---------------------------------------------------------------- #
@@ -60,10 +60,15 @@ class MotionEnergy:
         self.tx = 0
         self.ty = 0
 
-        self.max_of_x = 4.5 if not self.CALIBRATE else 0
-        self.min_of_x = - 4.5 if not self.CALIBRATE else 0
-        self.max_of_y = 4.5 if not self.CALIBRATE else 0
-        self.min_of_y = - 4.5 if not self.CALIBRATE else 0
+        self.max_of_x = 1.2 if not self.CALIBRATE else 0
+        self.min_of_x = - 1.2 if not self.CALIBRATE else 0
+        self.max_of_y = 1.2 if not self.CALIBRATE else 0
+        self.min_of_y = - 1.2 if not self.CALIBRATE else 0
+        
+        self.a_x = -15
+        self.b_x = 15
+        self.a_y = -15
+        self.b_y = 15
 
         # z-score value of a 95% precentile
         self.z_score = 1.645
@@ -71,17 +76,17 @@ class MotionEnergy:
         self.x_precentile = 0
         self.y_precentile = 0
 
-        self.prev_flow = np.zeros((240, 320, 2))
+        self.prev_flow = np.zeros((480, 640, 2))
 
-        self.flow_window = [np.zeros((240, 320, 2)), np.zeros((240, 320, 2))]
+        self.flow_window = [np.zeros((480, 640, 2)), np.zeros((480, 640, 2))]
 
         self.of_xs = []
         self.of_ys = []
 
-        self.x_buffer_size = 60
+        self.x_buffer_size = 100
         self.x_buffer = np.zeros(self.x_buffer_size)
 
-        self.y_buffer_size = 60
+        self.y_buffer_size = 100
         self.y_buffer = np.zeros(self.y_buffer_size)
 
         self.x_current_index = 0
@@ -113,6 +118,8 @@ class MotionEnergy:
         device_config = pykinect.default_configuration
         device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_OFF
         device_config.depth_mode = pykinect.K4A_DEPTH_MODE_WFOV_2X2BINNED
+        pykinect.K4ABT_TRACKER_PROCESSING_MODE_GPU = True
+        pykinect.K4A_DEPTH_MODE_WFOV_2X2BINNED = True
         
         # Start device
         self.device = pykinect.start_device(config=device_config)
@@ -120,8 +127,9 @@ class MotionEnergy:
         
         self.verbose = verbose
         
-        self.OSCsender = SimpleUDPClient(LOCAL_SERVER, MOTION_ENERGY_PORT)
-        self.InferenceOSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_INFERENCE_PORT)
+        self.OSCsender = SimpleUDPClient(KINECT_SERVER, MOTION_ENERGY_PORT)
+        self.InferenceOSCsender = SimpleUDPClient(KINECT_SERVER, SPIKE_INFERENCE_PORT)
+        self.MAX_OSCsender = SimpleUDPClient(KINECT_SERVER, MAX_OUTPUT_PORT)
 
         capture = self.device.update()
         ret, frame = capture.get_colored_depth_image()
@@ -131,7 +139,6 @@ class MotionEnergy:
             exit()
             
         self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
     async def start(self):
         
         while True:
@@ -140,7 +147,9 @@ class MotionEnergy:
             capture = self.device.update()
 
             # Get the color depth image from the capture
-            ret, frame = capture.get_colored_depth_image()
+            ret, frame = capture.get_depth_image()
+            #Display current frame
+            cv2.imshow("Motion Analysis", frame)
             
             if not ret:
                 print("Error: Failed to capture frame")
@@ -148,16 +157,24 @@ class MotionEnergy:
                 
             start_t = time.perf_counter_ns()
 
-            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            #curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            curr_gray = frame
+            curr_gray[curr_gray < 3200] =0 # Ignore near distance object
+            curr_gray[370:,:] = 0
+            curr_gray[:,:50] = 0
+            curr_gray[:,462:] =0
+            curr_gray = cv2.filter2D(curr_gray, -1, np.ones((5,5), np.float32)/25)
+            #curr_gray = curr_gray / 8000 * 255 # Rescale depth
 
             # Compute optical flow using Lucas-Kanade method
             flow = cv2.calcOpticalFlowFarneback(
-                self.prev_gray, curr_gray, None, 0.25, 2, 20, 1, 5, 1.1, 0
+                self.prev_gray, curr_gray, None, 0.25, 3, 20, 3, 5, 1.1, 0
             )
             
             # Extract horizontal/vertical component of flow
             flow_x = flow[..., 0]
             flow_y = flow[..., 1]
+            flow_x[:,270:] = - flow_x[:,270:]
 
             # Compute horizontal motion energy
             motion_energy_x = np.mean(flow_x)
@@ -178,8 +195,6 @@ class MotionEnergy:
                     f"Motion Energy X: {motion_energy_x}, Motion Energy Y: {motion_energy_y} took {(time.perf_counter_ns() - start_t)/1e6} ms"
                 )
 
-            #Display current frame
-            cv2.imshow("Motion Analysis", frame)
             #self.display_text(curr_frame, motion_energy_x, motion_energy_y)
 
             # Plot optical flow evolution
@@ -188,13 +203,18 @@ class MotionEnergy:
 
             # Update previous frame and grayscale image
             self.prev_gray = curr_gray.copy()
-
+            self.motion_activity = np.sqrt(np.mean(self.x_buffer)**2 +np.mean(self.y_buffer)**2)
             self.send_packet(motion_energy_x, motion_energy_y)
             # Exit on pressing 'q'
             if cv2.waitKey(1) & 0xFF == ord("q"):
-                self.FRAME.release()
                 cv2.destroyAllWindows()
                 break
+            
+            
+            self.MAX_OSCsender.send_message(
+                "/MOTION_ACTIVITY",
+                self.motion_activity.tolist(),
+            )
 
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(5e-2 * 1e9 - (time.perf_counter_ns() - start_t), 0)
@@ -264,9 +284,8 @@ class MotionEnergy:
 
         #margin = 0.2 * (np.abs(self.max_of_x) - np.abs(self.min_of_x))
         margin = 0
-        self.ax.set_ylim(self.min_of_x - margin, self.max_of_x + margin)
+        self.ax.set_ylim((self.min_of_x - margin)*5 , (self.max_of_x + margin)*5)
 
-        print(max(self.x_buffer))
 
         return (index + 1) % self.x_buffer_size
     
@@ -292,10 +311,7 @@ class MotionEnergy:
 
         #margin = 0.2 * (np.abs(self.max_of_y) - np.abs(self.min_of_y))
         margin = 0
-        self.ax.set_ylim(self.min_of_y - margin, self.max_of_y + margin)
-
-        print(max(self.y_buffer))
-        print('\n')
+        self.ax.set_ylim((self.min_of_x - margin)*5 , (self.max_of_x + margin)*5)
 
         return (index + 1) % self.y_buffer_size
     
@@ -333,7 +349,7 @@ class MotionEnergy:
 
         self.mean_of_x = (self.tx * self.mean_of_x + motion_energy_x) / (self.tx + 1)
         self.mean_of_y = (self.ty * self.mean_of_y + motion_energy_y) / (self.ty + 1)
-
+        
 
     def update_variance(self, motion_energy_x, motion_energy_y):
 
@@ -370,16 +386,11 @@ class MotionEnergy:
         #a_y = - self.z_score
         #b_y = self.z_score
 
-        a_x = -12
-        b_x = 12
-        a_y = -12
-        b_y = 12
-
         # motion_energy_x = self.min_of_x + ((motion_energy_x - a_x) * (self.max_of_x - self.min_of_x) / (b_x - a_x))
         # motion_energy_y = self.min_of_y + ((motion_energy_y - a_y) * (self.max_of_y - self.min_of_y) / (b_y - a_y))
       
-        motion_energy_x = a_x + ((motion_energy_x - self.min_of_x) * (b_x - a_x) / (self.max_of_x - self.min_of_x))
-        motion_energy_y = a_y + ((motion_energy_y - self.min_of_y) * (b_y - a_y) / (self.max_of_y - self.min_of_y))
+        motion_energy_x = self.a_x + ((motion_energy_x - self.min_of_x) * (self.b_x - self.a_x) / (self.max_of_x - self.min_of_x))
+        motion_energy_y = self.a_y + ((motion_energy_y - self.min_of_y) * (self.b_y - self.a_y) / (self.max_of_y - self.min_of_y))
         
         return motion_energy_x, motion_energy_y
 

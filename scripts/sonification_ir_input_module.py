@@ -16,14 +16,13 @@ from utils import plotting
 from utils import optical_flow
 
 from pythonosc.udp_client import SimpleUDPClient
-from tests.check_UDP_latency import elapsed_time_update
 from sonification_communication_module import *
 
 
 # ---------------------------------------------------------------- #
 # Video capture related parameters
-FRAME_WIDTH = 120
-FRAME_HEIGHT = 90
+FRAME_WIDTH = 600
+FRAME_HEIGHT = 450
 
 # Optical Flow Config
 OF_LOGIT_TRANSFOEM = True
@@ -73,10 +72,17 @@ class MotionEnergy:
         self.tx = 0
         self.ty = 0
 
-        self.max_of_x = 4.5 if not self.CALIBRATE else 0
-        self.min_of_x = - 4.5 if not self.CALIBRATE else 0
-        self.max_of_y = 4.5 if not self.CALIBRATE else 0
-        self.min_of_y = - 5.5 if not self.CALIBRATE else 0
+        # min-max posiible values for optical flow (environment-dependant).
+        self.max_of_x = 2 if not self.CALIBRATE else 0
+        self.min_of_x = - 2 if not self.CALIBRATE else 0
+        self.max_of_y = 2 if not self.CALIBRATE else 0
+        self.min_of_y = - 2 if not self.CALIBRATE else 0
+
+        # upper and lower limits for optical flow scaling.
+        self.a_x = -8
+        self.b_x = 8
+        self.a_y = -8
+        self.b_y = 8
 
         # z-score value of a 95% precentile
         self.z_score = 1.645
@@ -84,70 +90,46 @@ class MotionEnergy:
         self.x_precentile = 0
         self.y_precentile = 0
 
-        self.prev_flow = np.zeros((240, 320, 2))
+        self.prev_flow = np.zeros((310, 410, 2))
 
-        self.flow_window = [np.zeros((240, 320, 2)), np.zeros((240, 320, 2))]
+        self.flow_window = [np.zeros((310, 410, 2)), np.zeros((310, 410, 2))]
 
         self.of_xs = []
         self.of_ys = []
 
-        self.x_buffer_size = 60
+        self.x_buffer_size = 500
         self.x_buffer = np.zeros(self.x_buffer_size)
 
-        self.y_buffer_size = 60
+        self.y_buffer_size = 500
         self.y_buffer = np.zeros(self.y_buffer_size)
 
         self.x_current_index = 0
         self.y_current_index = 0
 
-        self.fig, self.ax = plt.subplots()
-        plt.title('Optical Flow over time')
-        plt.xlabel('Frame Window')
-        plt.ylabel('Optical Flow')
-
-        self.x_motion_line, = self.ax.plot(self.x_buffer)
-        self.x_motion_line.set_label('Optical Flow X')
-
-        self.y_motion_line, = self.ax.plot(self.y_buffer)
-        self.y_motion_line.set_label('Optical Flow Y')
-
-        if self.x_buffer_size > self.y_buffer_size:
-            self.ax.set_xlim(0, self.x_buffer_size - 1)
-        else:
-            self.ax.set_xlim(0, self.y_buffer_size - 1)
-
-        self.field_fig, self.field_axs, = plt.subplots(figsize=(10, 10))
-        self.X, self.Y = np.meshgrid(np.arange(0 , 320, 1) , np.arange(0 , 240, 1) )
-
-        self.stream = self.field_axs.streamplot(self.X, self.Y, np.zeros_like(self.X), np.zeros_like(self.Y), density=1.4, linewidth=None, color='#A23BEC') 
 
         # Enable interactive mode
         plt.ion()
 
-        try:
-            # 63 is the max possible gain.
-            self.FRAME = IRVideoCapture(0, gain=self.gain)
-        except:
+        self.FRAME = cv2.VideoCapture(0)
+        self.FRAME.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+        self.FRAME.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+
+        # Check if the camera opened successfully
+        if not self.FRAME.isOpened():
             print("Error: Failed to open camera")
             exit()
-
-        #s = Stream(self.FRAME, file_name='example_movie.avi', codec='png')
-
-        # self.s = Stream(self.FRAME, file_name=f'./calibration_recordings/calibration_recording_{uuid.uuid1()}.avi', codec='png')
-
         # Read first frame
-        try:
-            frame, timestamp = self.FRAME.read()
-        except:
+        ret, prev_frame = self.FRAME.read()
+        if not ret:
             print("Error: Failed to capture frame")
             exit()
-
-        # im.fromarray(frame).save(f"./calibration_frames/frame_{uuid.uuid1()}.png")
-
-        self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        prev_frame = prev_frame[93:403,115:525]
+        self.prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         self.verbose = verbose
+
         self.OSCsender = SimpleUDPClient(LOCAL_SERVER, MOTION_ENERGY_PORT)
         self.InferenceOSCsender = SimpleUDPClient(LOCAL_SERVER, SPIKE_INFERENCE_PORT)
+        self.MAX_OSCsender = SimpleUDPClient(KINECT_SERVER, MAX_OUTPUT_PORT)
 
 
     async def start(self):
@@ -156,15 +138,15 @@ class MotionEnergy:
             start_t = time.perf_counter_ns()
 
             # Read current frame
-            try:
-                curr_frame, timestamp = self.FRAME.read()
-            except:
+            ret, curr_frame = self.FRAME.read()
+            if not ret:
                 print("Error: Failed to capture frame")
                 break
 
             #curr_frame = self.frame_transformation(curr_frame)
 
             # Resize current frame
+            curr_frame = curr_frame[93:403,115:525]
             curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
 
             # Compute optical flow using Lucas-Kanade method
@@ -188,8 +170,8 @@ class MotionEnergy:
             # flow_y = optical_flow.calc_curl(flow_x, flow_y)
 
             # Compute horizontal motion energy
-            motion_energy_x = np.mean(flow_x)
-            motion_energy_y = np.mean(flow_y)
+            motion_energy_x = np.mean(flow_y)
+            motion_energy_y = np.mean(flow_x)
 
             if not self.CALIBRATE:
                 motion_energy_x, motion_energy_y = self.min_max_normalize_of(motion_energy_x, motion_energy_y)
@@ -218,13 +200,20 @@ class MotionEnergy:
 
             # Update previous frame and grayscale image
             self.prev_gray = curr_gray.copy()
-
+            self.motion_activity = np.sqrt(np.mean(self.x_buffer)**2 +np.mean(self.y_buffer)**2)
+            #print(self.motion_activity)
             self.send_packet(motion_energy_x, motion_energy_y)
             # Exit on pressing 'q'
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.FRAME.release()
                 cv2.destroyAllWindows()
                 break
+            
+            
+            self.MAX_OSCsender.send_message(
+                "/MOTION_ACTIVITY",
+                self.motion_activity.tolist(),
+            )
 
             elapsed_time = time.perf_counter_ns() - start_t
             sleep_duration = np.fmax(5e-2 * 1e9 - (time.perf_counter_ns() - start_t), 0)
@@ -296,9 +285,6 @@ class MotionEnergy:
 
         #margin = 0.2 * (np.abs(self.max_of_x) - np.abs(self.min_of_x))
         margin = 0
-        self.ax.set_ylim(self.min_of_x - margin, self.max_of_x + margin)
-
-        print(max(self.x_buffer))
 
         return (index + 1) % self.x_buffer_size
     
@@ -324,10 +310,6 @@ class MotionEnergy:
 
         #margin = 0.2 * (np.abs(self.max_of_y) - np.abs(self.min_of_y))
         margin = 0
-        self.ax.set_ylim(self.min_of_y - margin, self.max_of_y + margin)
-
-        print(max(self.y_buffer))
-        print('\n')
 
         return (index + 1) % self.y_buffer_size
     
@@ -343,12 +325,7 @@ class MotionEnergy:
 
     # Function to update the plot line with the current buffer
     def update_plot(self):
-
-        self.x_motion_line.set_ydata(self.x_buffer)
-        self.y_motion_line.set_ydata(self.y_buffer)
-
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
+        pass
 
 
     def plot_optical_flow(self, motion_energy_x, motion_energy_y):
@@ -417,16 +394,11 @@ class MotionEnergy:
         #a_y = - self.z_score
         #b_y = self.z_score
 
-        a_x = -4
-        b_x = 4
-        a_y = -4
-        b_y = 4
-
         # motion_energy_x = self.min_of_x + ((motion_energy_x - a_x) * (self.max_of_x - self.min_of_x) / (b_x - a_x))
         # motion_energy_y = self.min_of_y + ((motion_energy_y - a_y) * (self.max_of_y - self.min_of_y) / (b_y - a_y))
       
-        motion_energy_x = a_x + ((motion_energy_x - self.min_of_x) * (b_x - a_x) / (self.max_of_x - self.min_of_x))
-        motion_energy_y = a_y + ((motion_energy_y - self.min_of_y) * (b_y - a_y) / (self.max_of_y - self.min_of_y))
+        motion_energy_x = self.a_x + ((motion_energy_x - self.min_of_x) * (self.b_x - self.a_x) / (self.max_of_x - self.min_of_x))
+        motion_energy_y = self.a_y + ((motion_energy_y - self.min_of_y) * (self.b_y - self.a_y) / (self.max_of_y - self.min_of_y))
         
         return motion_energy_x, motion_energy_y
 

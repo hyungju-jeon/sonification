@@ -31,7 +31,7 @@ INFERRED = [np.zeros(4)]
 ASPECT_RATIO = 1
 WIDGET_SIZE = 1024
 VIS_DEPTH = -25
-VIS_RADIUS = 10
+VIS_RADIUS = 20
 
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
@@ -44,8 +44,9 @@ SWITCH_RASTER_VISUALIZE = [1]
 SWITCH_TRUE_LATENT_VISUALIZE = [1]
 SWITCH_INFERRED_LATENT_VISUALIZE = [1]
 SWITCH_SPIKE_VISUALIZE = [1]
-SWITCH_SPIKE_ORGANIZATION = [0]
-SWITCH_GW_COLOR = [0]
+SPIKE_ORGANIZATION = [0]
+GW_COLOR = [0]
+
 
 COLOR_INDEX = [0]
 WHITE_COLOR = [200, 200, 200, 255]
@@ -235,11 +236,16 @@ class SpikeBallVisualizer:
         self.indicators = indicators
         self.size = np.ones(num_neurons) * 5
         self.color = np.repeat(
-            np.array([0.2, 1, 0.2, 0.4])[np.newaxis, :], num_neurons, axis=0
+            np.array([*np.array(GREEN_COLOR[:3]) / 255, 0.4])[np.newaxis, :],
+            num_neurons,
+            axis=0,
+        )
+        self.color[raster_sort_idx >= 50] = np.array(
+            [*np.array(AMBER_COLOR[:3]) / 255, 0.4]
         )
 
     def update_color(self, color):
-        self.color[:, :3] = np.array(color[:3]) / 255
+        self.color[raster_sort_idx < 50] = np.array([*np.array(color[:3]) / 255, 0.4])
 
     def update(self):
         if self.frame % 10 == 0:
@@ -277,7 +283,7 @@ class SpikeBallVisualizer:
         else:
             self.size[index] = 0
         self.color[index, -1] = 0.9
-        if SWITCH_SPIKE_ORGANIZATION[0]:
+        if SPIKE_ORGANIZATION[0]:
             self.velocity = self.centroid_positions - self.target_positions
             self.centroid_positions[index] -= 0.05 * self.velocity[index]
 
@@ -300,7 +306,7 @@ class SpikeBallVisualizer:
     def estimate_velocity(self):
         self.velocity = np.random.uniform(-1, 1, (num_neurons, 3))
         self.velocity[0] = 0
-        if not SWITCH_SPIKE_ORGANIZATION[0]:
+        if not SPIKE_ORGANIZATION[0]:
             self.velocity *= 3
         self.centroid_positions += 0.05 * self.velocity
         self.centroid_positions -= 0.0001 * self.centroid_positions
@@ -360,14 +366,14 @@ class TrueLatentVisualizer:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_ref, 3)),
                     color=self.color_ref,
-                    width=5,
+                    width=3,
                     antialias=False,
                 )
             else:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_var, 3)),
                     color=self.color_var,
-                    width=5,
+                    width=3,
                     antialias=False,
                 )
             self.traces[i].setVisible(visible)
@@ -392,7 +398,7 @@ class TrueLatentVisualizer:
         for i in range(1, self.L_var):
             self.color_var[i][-1] = self.color_var[i - 1][-1] * self.decay_var
         self.color_var = self.color_var[::-1]
-        self.traces[-1].color = self.color_var
+        self.traces[1].color = self.color_var
 
     def update(self):
         if self.last_frame >= self.max_length:
@@ -483,14 +489,14 @@ class InferredLatentVisualizer:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_ref, 3)),
                     color=self.color_ref,
-                    width=5,
+                    width=1,
                     antialias=False,
                 )
             else:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_var, 3)),
                     color=self.color_var,
-                    width=5,
+                    width=1,
                     antialias=False,
                 )
             self.traces[i].setVisible(visible)
@@ -515,7 +521,7 @@ class InferredLatentVisualizer:
         for i in range(1, self.L_var):
             self.color_var[i][-1] = self.color_var[i - 1][-1] * self.decay_var
         self.color_var = self.color_var[::-1]
-        self.traces[-1].color = self.color_var
+        self.traces[1].color = self.color_var
 
     def update(self):
         if self.last_frame >= self.max_length:
@@ -578,8 +584,10 @@ parent_widget = gl.GLViewWidget()
 parent_widget.setGeometry(0, 0, 1920, 1200)
 layout = QGridLayout()
 parent_widget.setLayout(layout)
-monitor = QDesktopWidget().screenGeometry(0)
+monitor = QDesktopWidget().screenGeometry(1)
 parent_widget.move(monitor.left(), monitor.top())
+parent_widget.showMaximized()
+parent_widget.showFullScreen()
 parent_widget.show()
 
 floor_widget = gl.GLViewWidget(parent=parent_widget)
@@ -707,12 +715,12 @@ async def init_main():
     dispatcher_max = Dispatcher()
     dispatcher_max.map("/GW_COLOR", spike_pacer.max_control_GW_color)
     dispatcher_max.map("/TRUE_LENGTH", spike_pacer.max_control_true_trail_length)
-    dispatcher_max.map("/INFERRED_LENGTH", spike_pacer.max_control_true_trail_length)
+    dispatcher_max.map("/INFERRED_LENGTH", spike_pacer.max_control_inferred_trail_length)
     dispatcher_max.map("/DISC_RADIUS_INC", spike_pacer.max_control_osc_handler)
     dispatcher_max.map("/SPIKE_ORGANIZATION", spike_pacer.max_control_osc_handler)
     dispatcher_max.map("/SPIKE", spike_pacer.max_switch_spike_vis)
     dispatcher_max.map("/TRUE_LATENT", spike_pacer.max_switch_true_latent_vis)
-    dispatcher_max.map("/INFERRED_LATENT", spike_pacer.max_switch_inferred_latent_vis)
+    dispatcher_max.map("/NFERRED_LATENT", spike_pacer.max_switch_inferred_latent_vis)
     dispatcher_max.map("/RASTER", spike_pacer.max_switch_raster_vis)
 
     server_spike = AsyncIOOSCUDPServer(
@@ -729,6 +737,7 @@ async def init_main():
     await server_spike.create_serve_endpoint()
     await server_latent.create_serve_endpoint()
     await server_max.create_serve_endpoint()
+    spike_pacer.max_control_GW_color(None, [0])
     while True:
         try:
             await asyncio.sleep(0)

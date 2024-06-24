@@ -56,7 +56,7 @@ async def init_main():
     param = np.load(loading_matrix_slow_name, allow_pickle=False)
     C_slow, b_slow = param["C"], param["b"]
 
-    slow_latent_block = LatentModule.LatentDynamics(CYCLE_SLOW, verbose=True)
+    slow_latent_block = LatentModule.LatentDynamics(CYCLE_SLOW, verbose=False)
     slow_spike_block = LatentModule.SpikeGenerator(
         C_slow, b_slow, dt, latent_block=slow_latent_block
     )

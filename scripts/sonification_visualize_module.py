@@ -33,6 +33,7 @@ ASPECT_RATIO = 1
 WIDGET_SIZE = 1024
 VIS_DEPTH = -25
 VIS_RADIUS = 10
+VIS_RADIUS_LATENT = 15
 GRID_SIZE_WIDTH = 100
 GRID_SIZE_HEIGHT = 50
 
@@ -41,25 +42,26 @@ INFERRED_DECAY_FACTOR = [0.95]
 
 DISC_RADIUS_INC = [10]
 DISC_DECAY_FACTOR = [0.90]
-RASTER_DECAY_FACTOR = [0.1]
+RASTER_DECAY_FACTOR = [0.9]
 
-SWITCH_WALL_RASTER_LEFT = [1]
-SWITCH_WALL_RASTER_RIGHT = [1]
-SWITCH_WALL_RASTER_TOP = [1]
-SWITCH_WALL_RASTER_BOTTOM = [1]
+SWITCH_WALL_RASTER_LEFT = [0]
+SWITCH_WALL_RASTER_RIGHT = [0]
+SWITCH_WALL_RASTER_TOP = [0]
+SWITCH_WALL_RASTER_BOTTOM = [0]
 SWITCH_WALL_SPIKE = [0]
 SWITCH_WALL_TRUE_LATENT = [1]
-SWITCH_WALL_INFERRED_LATENT = [1]
+SWITCH_WALL_INFERRED_LATENT = [0]
 
-SWITCH_CEILING_RASTER = [1]
+SWITCH_CEILING_RASTER = [0]
 SWITCH_CEILING_SPIKE = [1]
 
-SWITCH_SPIKE_ORGANIZATION = [1]
-SWITH_GW_COLOR = [1]
+SPIKE_ORGANIZATION = [0]
+GW_COLOR = [1]
 SWITCH_GRID = [0]
 
 COLOR_INDEX = [0]
 WHITE_COLOR = [200, 200, 200, 255]
+WHITE_CEILING_COLOR = [255, 255, 255, 255]
 GREEN_COLOR = [51, 255, 51, 255]
 AMBER_COLOR = [255, 176, 0, 255]
 
@@ -73,7 +75,7 @@ def compute_decay_factor(d):
 
 class RasterPlaneVisualizer:
     def __init__(
-        self, orientation, visible=True, max_level=5, separate=False, widget=None
+        self, orientation, visible=True, max_level=10, separate=False, widget=None
     ):
         # Create a PyQtGraph window
         if widget is None:
@@ -159,11 +161,11 @@ class RasterPlaneVisualizer:
                 1,
             ]
             self.img.scale(*scale_factor)
-            self.img.rotate(90, 0, 1, 0)
+            self.img.rotate(-90, 0, 1, 0)
             self.img.translate(
                 -GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2,
                 -GRID_SIZE_WIDTH / 2,
-                GRID_SIZE_HEIGHT / 2,
+                -GRID_SIZE_HEIGHT / 2,
             )
 
         self.img.setVisible(self.visible)
@@ -173,7 +175,10 @@ class RasterPlaneVisualizer:
         self.count = 0
 
         # Create a custom lookup table (LUT) with green-neon color
-        self.lut = [[*GREEN_COLOR[:3], i] for i in range(256)]
+        self.lut = [[*WHITE_COLOR[:3], i] for i in range(256)]
+        if orientation == "ceiling":
+            self.lut = [[*WHITE_CEILING_COLOR[:3], i] for i in range(256)]
+
 
     def animation(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
@@ -196,7 +201,7 @@ class RasterPlaneVisualizer:
             if firing_event > 0:  # If there's firing
                 self.firing_rates[
                     self.frame, i
-                ] += self.max_level  # Instantly increase firing rate
+                ] += self.max_level//3  # Instantly increase firing rate
 
         if self.frame % 10 == 0 and self.visible:
             if self.count >= self.L:
@@ -276,7 +281,7 @@ class SpikeBallVisualizer:
         self.indicators = indicators
         self.size = np.ones(num_neurons) * 5
         self.color = np.repeat(
-            np.array([*np.array(GREEN_COLOR[:3]) / 255, 0.4])[np.newaxis, :],
+            np.array([*np.array(WHITE_COLOR[:3]) / 255, 0.4])[np.newaxis, :],
             num_neurons,
             axis=0,
         )
@@ -295,9 +300,15 @@ class SpikeBallVisualizer:
                 self.trigger_spike(np.where(SPIKES[0] > 0)[0])
 
             self.theta = (
-                np.arctan2(self.centroid_positions[:, 2], self.centroid_positions[:, 1])
-                + 2 * np.pi
-            ) % (2 * np.pi)
+                (
+                    np.arctan2(
+                        self.centroid_positions[:, 2], self.centroid_positions[:, 1]
+                    )
+                    + np.pi
+                )
+                * 360
+                / (2 * np.pi)
+            )
             self.MAX_OSCsender.send_message(
                 "/SPIKE_POSITION",
                 self.theta[raster_sort_idx_inv].tolist(),
@@ -317,7 +328,7 @@ class SpikeBallVisualizer:
         else:
             self.size[index] = 0
         self.color[index, -1] = 0.9
-        if SWITCH_SPIKE_ORGANIZATION[0]:
+        if SPIKE_ORGANIZATION[0]:
             self.velocity = self.centroid_positions - self.target_positions
             self.centroid_positions[index] -= 0.05 * self.velocity[index]
 
@@ -340,7 +351,7 @@ class SpikeBallVisualizer:
     def estimate_velocity(self):
         self.velocity = np.random.uniform(-1, 1, (num_neurons, 3))
         self.velocity[0] = 0
-        if not SWITCH_SPIKE_ORGANIZATION[0]:
+        if not SPIKE_ORGANIZATION[0]:
             self.velocity *= 3
         self.centroid_positions += 0.05 * self.velocity
         self.centroid_positions -= 0.0001 * self.centroid_positions
@@ -432,7 +443,7 @@ class TrueLatentVisualizer:
         for i in range(1, self.L_var):
             self.color_var[i][-1] = self.color_var[i - 1][-1] * self.decay_var
         self.color_var = self.color_var[::-1]
-        self.traces[-1].color = self.color_var
+        self.traces[1].color = self.color_var
 
     def update(self):
         if self.last_frame >= self.max_length:
@@ -458,8 +469,8 @@ class TrueLatentVisualizer:
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window]) * VIS_DEPTH,
-                        self.data[2 * i, slice_window] * VIS_RADIUS,
-                        self.data[2 * i + 1, slice_window] * VIS_RADIUS,
+                        self.data[2 * i, slice_window] * VIS_RADIUS_LATENT ,
+                        self.data[2 * i + 1, slice_window] * VIS_RADIUS_LATENT,
                     ]
                 ).transpose()
                 self.traces[i].setData(
@@ -523,14 +534,14 @@ class InferredLatentVisualizer:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_ref, 3)),
                     color=self.color_ref,
-                    width=5,
+                    width=1,
                     antialias=False,
                 )
             else:
                 self.traces[i] = gl.GLLinePlotItem(
                     pos=np.zeros((self.L_var, 3)),
                     color=self.color_var,
-                    width=5,
+                    width=1,
                     antialias=False,
                 )
             self.traces[i].setVisible(visible)
@@ -555,7 +566,7 @@ class InferredLatentVisualizer:
         for i in range(1, self.L_var):
             self.color_var[i][-1] = self.color_var[i - 1][-1] * self.decay_var
         self.color_var = self.color_var[::-1]
-        self.traces[-1].color = self.color_var
+        self.traces[1].color = self.color_var
 
     def update(self):
         if self.last_frame >= self.max_length:
@@ -581,8 +592,8 @@ class InferredLatentVisualizer:
                 pts = np.vstack(
                     [
                         np.ones_like(self.data[0, slice_window]) * VIS_DEPTH,
-                        self.data[2 * i, slice_window] * VIS_RADIUS,
-                        self.data[2 * i + 1, slice_window] * VIS_RADIUS,
+                        self.data[2 * i, slice_window] * VIS_RADIUS_LATENT,
+                        self.data[2 * i + 1, slice_window] * VIS_RADIUS_LATENT,
                     ]
                 ).transpose()
                 self.traces[i].setData(
@@ -618,7 +629,7 @@ wall_parent_widget = gl.GLViewWidget()
 wall_parent_widget.setGeometry(0, 0, 1920, 1200)
 layout = QGridLayout()
 wall_parent_widget.setLayout(layout)
-monitor = QDesktopWidget().screenGeometry(1)
+monitor = QDesktopWidget().screenGeometry(2)
 wall_parent_widget.move(monitor.left(), monitor.top())
 
 wall_widget = gl.GLViewWidget(parent=wall_parent_widget)
@@ -628,25 +639,27 @@ wall_widget.opts["distance"] = 75
 wall_widget.opts["fov"] = 90
 wall_widget.opts["elevation"] = 0
 wall_widget.opts["azimuth"] = 0
+wall_parent_widget.showMaximized()
+wall_parent_widget.showFullScreen()
 
-g_center = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_HEIGHT, GRID_SIZE_WIDTH, 1))
-g_center.rotate(90, 0, 1, 0)
-g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2, 0, 0)
-wall_widget.addItem(g_center)
+#g_center = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_HEIGHT, GRID_SIZE_WIDTH, 1))
+#g_center.rotate(90, 0, 1, 0)
+#g_center.translate(-GRID_SIZE_WIDTH / 2 + GRID_SIZE_HEIGHT / 2, 0, 0)
+#wall_widget.addItem(g_center)
 
-g_left = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
-g_left.rotate(90, 1, 0, 0)
-g_left.translate(GRID_SIZE_HEIGHT / 2, -GRID_SIZE_WIDTH / 2, 0)
-wall_widget.addItem(g_left)
+#g_left = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
+#g_left.rotate(90, 1, 0, 0)
+#g_left.translate(GRID_SIZE_HEIGHT / 2, -GRID_SIZE_WIDTH / 2, 0)
+#wall_widget.addItem(g_left)
 
-g_floor = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_WIDTH, 1))
-g_floor.translate(GRID_SIZE_HEIGHT / 2, 0, -GRID_SIZE_HEIGHT / 2 + 0)
-wall_widget.addItem(g_floor)
+#g_floor = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_WIDTH, 1))
+#g_floor.translate(GRID_SIZE_HEIGHT / 2, 0, -GRID_SIZE_HEIGHT / 2 + 0)
+#wall_widget.addItem(g_floor)
 
-g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
-g_right.rotate(-90, 1, 0, 0)
-g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)
-wall_widget.addItem(g_right)
+#g_right = gl.GLGridItem(QtGui.QVector3D(GRID_SIZE_WIDTH, GRID_SIZE_HEIGHT, 1))
+#g_right.rotate(-90, 1, 0, 0)
+#g_right.translate(GRID_SIZE_HEIGHT / 2, GRID_SIZE_WIDTH / 2, 0)
+#wall_widget.addItem(g_right)
 
 layout.addWidget(wall_widget, 1, 0)
 wall_parent_widget.show()
@@ -663,11 +676,9 @@ vis_wall_raster_top = RasterPlaneVisualizer(
 vis_wall_raster_bottom = RasterPlaneVisualizer(
     orientation="bot", visible=SWITCH_WALL_RASTER_BOTTOM[0], widget=wall_widget
 )
-# vis_wall_spike = SpikeBallVisualizer(
-#     target_location=target_location, visible=SWITCH_WALL_SPIKE[0], widget=wall_widget
-# )
+
 vis_wall_true_latent = TrueLatentVisualizer(
-    ref_color=GREEN_COLOR,
+    ref_color=WHITE_COLOR,
     var_color=RAINBOW_CMAP,
     visible=SWITCH_WALL_TRUE_LATENT[0],
     widget=wall_widget,
@@ -684,7 +695,7 @@ ceiling_parent_widget = gl.GLViewWidget()
 ceiling_parent_widget.setGeometry(0, 0, 1920, 1200)
 layout = QGridLayout()
 ceiling_parent_widget.setLayout(layout)
-monitor = QDesktopWidget().screenGeometry(0)
+monitor = QDesktopWidget().screenGeometry(1)
 ceiling_parent_widget.move(monitor.left(), monitor.top())
 ceiling_parent_widget.show()
 
@@ -695,6 +706,8 @@ ceiling_widget.opts["distance"] = 55
 ceiling_widget.opts["fov"] = 90
 ceiling_widget.opts["elevation"] = 0
 ceiling_widget.opts["azimuth"] = 0
+ceiling_parent_widget.showMaximized()
+ceiling_parent_widget.showFullScreen()
 
 
 vis_ceiling_spike = SpikeBallVisualizer(
@@ -849,7 +862,7 @@ async def init_main():
 
     dispatcher_max.map("/GW_COLOR", spike_pacer.max_control_GW_color)
     dispatcher_max.map("/TRUE_LENGTH", spike_pacer.max_control_true_trail_length)
-    dispatcher_max.map("/INFERRED_LENGTH", spike_pacer.max_control_true_trail_length)
+    dispatcher_max.map("/INFERRED_LENGTH", spike_pacer.max_control_inferred_trail_length)
 
     server_spike = AsyncIOOSCUDPServer(
         (LOCAL_SERVER, SPIKE_VISUALIZE_PORT),

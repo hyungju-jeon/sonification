@@ -99,7 +99,7 @@ class MotionEnergy:
                 )
 
             # Display current frame
-            # cv2.imshow("Motion Analysis", curr_frame)
+            cv2.imshow("Motion Analysis", curr_frame)
             # self.display_text(curr_frame, motion_energy_x, motion_energy_y)
 
             # Plot optical flow evolution

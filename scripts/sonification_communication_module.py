@@ -8,6 +8,7 @@ from pythonosc.osc_server import AsyncIOOSCUDPServer
 
 # ----------------------- OSC Related Stuff ---------------------- #
 # OSC ips / ports
+KINECT_SERVER = "127.0.0.1"
 LOCAL_SERVER = "127.0.0.1"
 MAX_SERVER = "127.0.0.1"
 SIGNAL_PORT = 1110

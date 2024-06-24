@@ -135,7 +135,7 @@ class LatentDynamics:
 
         try:
             server_motion = AsyncIOOSCUDPServer(
-                ("192.168.0.102", MOTION_ENERGY_PORT),
+                (KINECT_SERVER, MOTION_ENERGY_PORT),
                 DISPATCHER,
                 asyncio.get_event_loop(),
             )

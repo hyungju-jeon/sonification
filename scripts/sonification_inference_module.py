@@ -129,6 +129,7 @@ def compute_cartesian_input(u, z_p, dt=1e-3):
 class LatentInference:
 
     def __init__(self, verbose=False):
+        torch.set_grad_enabled(False)
         # pass the handlers to the dispatcher
         # Load trained network
         self.verbose = verbose
@@ -305,7 +306,7 @@ class LatentInference:
 
         try:
             server_motion = AsyncIOOSCUDPServer(
-                ("192.168.0.102", SPIKE_INFERENCE_PORT),
+                (KINECT_SERVER, SPIKE_INFERENCE_PORT),
                 DISPATCHER,
                 asyncio.get_event_loop(),
             )
@@ -327,5 +328,5 @@ class LatentInference:
 
 
 if __name__ == "__main__":
-    inference = LatentInference()
+    inference = LatentInference(verbose=False)
     asyncio.run(inference.start())
